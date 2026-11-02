@@ -65,6 +65,8 @@ func _process(_d: float) -> bool:
 	if f > 10:
 		frame_ms.append((now - last_us) / 1000.0)
 	last_us = now
+	if ad == "menu_telefon" and f == 2:
+		root.size = Vector2i(844, 390)  # telefon yatay (ekransızda pencere boyutu ancak ilk kareden sonra tutuyor)
 	if ad == "dokunma" and f == 2:
 		root.size = Vector2i(1280, 720)  # ekransızda pencere 64x64 çıkıyor; HUD paneli ekranı kaplamasın
 	var m = current_scene
@@ -72,6 +74,11 @@ func _process(_d: float) -> bool:
 		return false
 	if ad in DOLAP_MENU:
 		dolap_test(m)
+	elif ad == "menu_telefon":
+		if f == 20:
+			var why: String = layout_check(m)
+			if why != "":
+				return fail(why)
 	elif ad != "menu" and f == 30:  # menüden başla (isim senaryolarında önce ismi yaz)
 		var menu = m.get_children().filter(func(c): return c is Secim)
 		if menu.is_empty():
@@ -95,7 +102,13 @@ func _process(_d: float) -> bool:
 		ayar_test(m)
 	if f == 32:
 		key(KEY_ENTER, false)
-	if f == 60 and ad != "menu" and not ad in DOLAP_MENU:
+	if ad == "intro_atla" and f == 34:
+		key(KEY_SPACE, true)  # açılış daha bitmeden
+	if ad == "intro_atla" and f == 38 and m.state != "run":
+		return fail("açılış tuşla atlanmadı: %s" % m.state)
+	if ad == "tekrar_enter" and reloaded and f == 312 and m.state == "intro":
+		return fail("tekrar koşuda açılış oynadı")
+	if f == 60 and ad != "menu" and ad != "menu_telefon" and not ad in DOLAP_MENU:
 		key(KEY_SPACE, true)  # açılışı atla
 	if f == 62:
 		key(KEY_SPACE, false)
@@ -326,6 +339,29 @@ func dolap_test(m) -> void:
 			key(k, false)
 
 
+# 844x390: başlık, en iyi çipi ve menü paneli üst üste binmez, ekrandan taşmaz; menü düğmeleri >= 56 px; Ayarlar sığar.
+func layout_check(m) -> String:
+	var screen := Rect2(Vector2.ZERO, Vector2(root.size))
+	var menu = m.menu_node
+	var boxes := {baslik = menu.title.get_global_rect(), cip = menu.best_chip.get_global_rect(), panel = menu.main_panel.get_global_rect(),
+			dolap = m.dolap_btn.get_global_rect(), ses = m.snd_btn.get_global_rect(), ayarlar = m.set_btn.get_global_rect()}
+	var keys := boxes.keys()
+	for i in keys.size():
+		if not screen.encloses(boxes[keys[i]].grow(-1)):
+			return "%s ekrandan taşıyor: %s" % [keys[i], boxes[keys[i]]]
+		for j in range(i + 1, keys.size()):
+			if boxes[keys[i]].grow(-1).intersects(boxes[keys[j]].grow(-1)):
+				return "%s ile %s çakışıyor" % [keys[i], keys[j]]
+	for b in menu.main_panel.find_children("*", "Button", true, false):
+		if b.size.y < 56:
+			return "menü düğmesi küçük: %s %s" % [b.text, b.size]
+	m.open_settings()
+	var sp: Rect2 = m.set_panel.get_child(0).get_global_rect()
+	if not screen.encloses(sp.grow(-1)):
+		return "Ayarlar paneli ekrana sığmıyor: %s" % sp
+	return ""
+
+
 func dolap_check(m) -> String:
 	var st: Dictionary = Dolap.load_state(M.OUTFITS)
 	if m.dolap_st != st:
@@ -362,7 +398,7 @@ func check(m) -> bool:
 		return fail("kıyafetler giyili değil")
 	if ad in DOLAP_MENU or ad == "kiyafetle_kos":
 		write_cfg("")  # sonraki senaryolar kıyafetsiz başlasın (ör. animasyon şapka eklemine bakıyor)
-	var want := {dolap_al = "menu", dolap_yetersiz = "menu", bozuk_dolap_cfg = "menu", kiyafetle_kos = "run", menu = "menu", duraklat = "run", ayar_paneli = "run", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
+	var want := {menu_telefon = "menu", intro_atla = "run", dolap_al = "menu", dolap_yetersiz = "menu", bozuk_dolap_cfg = "menu", kiyafetle_kos = "run", menu = "menu", duraklat = "run", ayar_paneli = "run", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
 			animasyon = "run", carpma_ses = "run", isim_bos = "run", isim_uzun = "run", isim_turkce = "run", bolgeler = "run", fare_bos = "run", bozuk_cfg = "over", skor_bos = "over", skor_dolu = "over"}
 	if not want.has(ad):
 		return fail("bilinmeyen senaryo")

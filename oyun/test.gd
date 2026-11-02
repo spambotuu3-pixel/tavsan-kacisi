@@ -67,6 +67,8 @@ func _init() -> void:
 				"her gerçek kıyafet alınıp giyilebiliyor"],
 		[dress_ok(), true, "kıyafet: gizlenen parça çıkar, eklem indeksleri kayar, kafa kıyafeti eklemle oynar"],
 		[dolap_act(), ["Al (25)", "Çıkar", "Giy", "Yetmiyor (60)", 75], "dolap düğmesi: al+giy, çıkar, yeniden giy; para yetmiyor"],
+		[Main.INTRO_TIME <= 2.5 and Main.INTRO_CUES.keys().all(func(k): return k < Main.INTRO_TIME) and Main.INTRO_CUES.values().count(Main.INTRO_GO) == 1, true, "Çabuk Giriş: açılış ≤ 2,5 sn, geri sayım yok, KAÇ! bir kez"],
+		[[Secim.best_text([]), Secim.best_text([{isim = "Pamuk", puan = 850}, {isim = "x", puan = 1}])], ["En iyi: henüz yok", "En iyi: Pamuk  850"], "menü çipi en iyi skoru gösterir"],
 		[dolap_kayit(), true, "dolap kaydı gidip gelir, koşu kazancı cüzdana eklenir (test dosyası)"],
 		[Main.HIT_SND.keys().map(func(k): return Main.hit_snd(k)), Main.HIT_SND.values(), "engel türü ses anahtarına eşlenir"],
 		[[Main.hit_snd(""), Main.hit_snd("bilinmez")], ["bonk", "bonk"], "bilinmeyen engel türü eski çarpma sesini çalar"],

@@ -34,10 +34,10 @@ const COMPAT_SHADOW_DIST := 28.0
 const COMPAT_SCALE := 0.8                  # tarayıcıda 3B çizim çözünürlük ölçeği (arayüz tam çözünürlükte kalır)
 const MENU_SPIN := 0.6                     # tavşanın menüde dönüşü (rad/sn)
 const INTRO_GO := "KAÇ!"
-const INTRO_CUES := {0.05: "Mmm, taze havuç...", 1.6: "HEY! Havuçlarım!", 3.2: "3", 3.8: "2", 4.4: "1", 5.0: INTRO_GO}
-const INTRO_TIME := 5.2
+const INTRO_CUES := {0.05: "HEY! Havuçlarım!", 1.3: INTRO_GO}  # Çabuk Giriş (PLAN-giris.md): ~2 sn, geri sayım yok
+const INTRO_TIME := 1.9
 const INTRO_X := -5.5          # tavşan yolun dışında, çimde başlar
-const INTRO_DASH := Vector2(2.3, 3.0)  # yola koştuğu aralık (sn)
+const INTRO_DASH := Vector2(0.7, 1.3)  # yola koştuğu aralık (sn)
 const INTRO_FACE := 2.4        # kemirirken yüzü kameraya doğru döner (rad)
 const ZONES := [[0.0, "tarla"], [200.0, "kopek"], [350.0, "kumes"], [520.0, "son"]]  # [başlangıç m, bölge]
 const EVENTS := {200.0: "Halil: Karabaş, tut şunu!", 350.0: "Kümes!", 520.0: "Yuva göründü!"}
@@ -925,6 +925,8 @@ func make_pause_ui(layer: CanvasLayer) -> void:
 	set_panel.visible = false
 	var scol := set_panel.get_child(0).get_child(0)
 	hud_label(scol, 28).text = "Ayarlar"
+	var how := hud_label(scol, 16)  # "Nasıl oynanır": menüden buraya taşındı (PLAN-giris)
+	how.text = Secim.HELP_TEXT
 	var grid := GridContainer.new()
 	grid.columns = 2
 	scol.add_child(grid)
@@ -1042,6 +1044,19 @@ func on_start(isim: String) -> void:
 	close_panels()
 	state = "intro"
 	update_hud(0.0)  # açılışta önceki/varsayılan değerler görünmesin
+	if not go_menu:  # tekrar koşu (bitişte Enter/dokunma): açılış oynamaz, kovalama kamerasıyla hemen başlar
+		cam_mix = 1.0
+		follow_cam(0.0)
+		begin_run()
+
+
+func begin_run() -> void:
+	body(rabbit).rotation.x = 0.0
+	rabbit.position = Vector3(LANES[1], 0.3, 0.0)  # açılış atlansa da yolda başlar
+	rabbit.rotation.y = 0.0
+	halil.position.y = 1.0
+	state = "run"
+	show_hint()
 
 
 func follow_cam(z: float) -> void:
@@ -1375,15 +1390,10 @@ func _process(delta: float) -> void:
 		body(rabbit).rotation.x = sin(intro_t * 14.0) * 0.08 * (1.0 - k)  # havuç kemirirken kafa sallanır
 		rabbit.position = Vector3(lerpf(INTRO_X, LANES[1], k), 0.3 + sin(k * PI) * 0.5, 0.0)  # yola sıçrayarak koşar
 		rabbit.rotation.y = lerpf(INTRO_FACE, 0.0, k)
-		halil.position.y = 1.0 + (absf(sin(intro_t * 9.0)) * 0.25 if intro_t > 1.6 else 0.0)  # Halil fark edince zıplar
+		halil.position.y = 1.0 + absf(sin(intro_t * 9.0)) * 0.25  # Halil kızgın zıplar
 		if intro_t < INTRO_TIME:
 			return
-		body(rabbit).rotation.x = 0.0
-		rabbit.position = Vector3(LANES[1], 0.3, 0.0)  # açılışı atlayınca da yolda başlar
-		rabbit.rotation.y = 0.0
-		halil.position.y = 1.0
-		state = "run"
-		show_hint()
+		begin_run()
 		return  # açılışı atlayan tuş bu karede zıplatmasın ya da şerit değiştirmesin
 
 	if hitstop_t > 0.0:  # vurulma anında kısa duraksama

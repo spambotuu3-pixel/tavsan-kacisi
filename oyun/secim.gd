@@ -7,17 +7,21 @@ signal basla(isim: String)  # renk zaten renk sinyaliyle uygulandı
 
 const M := preload("res://modeller.gd")
 const NAME_MAX := 12
+const LOW_SCREEN := 500  # bundan alçak ekranda (telefon yatay) menü sıkışık düzen
 const TOP := 5  # skor tablosunda tutulan kayıt
 const TITLE_C := Color(1.0, 0.86, 0.45)       # başlık: sıcak sarı, koyu kahve kenar (Tasarımcı)
 const TITLE_EDGE := Color(0.33, 0.22, 0.14)
 
-const HELP_TEXT := "Kontroller\n← →  şerit değiştir\n↑ / Space  zıpla\n↓  havuçla atıl (3 havuç)\nTelefon: dokun sol / orta / sağ\n(sola, zıpla, sağa), aşağı kaydır = atıl"
+const HELP_TEXT := "Nasıl oynanır: ← → şerit · ↑ / Space zıpla · ↓ atıl (3 havuç)\nTelefon: sol / orta / sağ dokun, aşağı kaydır = atıl"
 
 static var ayar_path := "user://ayar.cfg"  # senaryo testleri kendi dosyasını verir, kullanıcının kaydı bozulmaz
 
 var skin := 0
 var skin_label: Label
 var name_box: LineEdit
+var main_panel: PanelContainer  # senaryo: yerleşim/çakışma denetimi
+var best_chip: PanelContainer
+var title: Label
 
 
 # Denetim karakterleri (sekme, satır sonu, sağdan sola geçersiz kılma vb.) isme girmez.
@@ -88,6 +92,7 @@ static func save(section: String, values: Dictionary) -> void:
 func _ready() -> void:
 	var c := load_choice()
 	skin = c.skin
+	var low := get_viewport().get_visible_rect().size.y < LOW_SCREEN
 	var panel := PanelContainer.new()
 	add_child(panel)
 	var col := VBoxContainer.new()
@@ -107,33 +112,30 @@ func _ready() -> void:
 	name_box.text = c.isim
 	name_box.text_submitted.connect(func(_t): start())
 	col.add_child(name_box)
-	col.add_child(button("Koş! (Enter)", start))
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 40)
+	var go := button("Koş!", start)
+	go.add_theme_font_size_override("font_size", 40)
+	go.custom_minimum_size = Vector2(280, 72)
+	col.add_child(go)
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 16 if low else 40)
+	main_panel = panel
 	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	var best_box := PanelContainer.new()  # en iyiler: sağ üstte
+	best_chip = PanelContainer.new()  # en iyi skor: sağ üstte tek satır (kontroller Ayarlar'da)
 	var best := Label.new()
-	best.text = "En iyiler\n" + score_lines(load_scores(), -1)
-	best_box.add_child(best)
-	best_box.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 24)
-	best_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	add_child(best_box)
-	var help_box := PanelContainer.new()  # kontroller: sol altta küçük bilgi alanı
-	var help := Label.new()
-	help.text = HELP_TEXT
-	help.add_theme_font_size_override("font_size", 16)
-	help_box.add_child(help)
-	help_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 24)
-	help_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	add_child(help_box)
-	var title := Label.new()  # oyunun adı: üstte ortada, kenar çizgili
+	best.text = best_text(load_scores())
+	best.add_theme_font_size_override("font_size", 18)
+	best_chip.add_child(best)
+	best_chip.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
+	best_chip.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	add_child(best_chip)
+	title = Label.new()  # oyunun adı: üstte ortada, kenar çizgili
 	title.text = "Tavşan Kaçışı"
-	title.add_theme_font_size_override("font_size", 72)
+	title.add_theme_font_size_override("font_size", 44 if low else 72)
 	title.add_theme_color_override("font_color", TITLE_C)
 	title.add_theme_color_override("font_outline_color", TITLE_EDGE)
 	title.add_theme_constant_override("outline_size", 16)
 	title.rotation_degrees = -3
-	title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 28)
+	title.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 8 if low else 28)
 	title.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	add_child(title)
 	skin_label.text = M.RABBIT_SKINS[skin].ad
@@ -144,6 +146,7 @@ func button(text: String, on_press: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE  # odak hep isim kutusunda kalsın
+	b.custom_minimum_size = Vector2(56, 56)  # parmak hedefi
 	b.pressed.connect(on_press)
 	return b
 
@@ -164,6 +167,10 @@ func pick(d: int) -> void:
 	skin = wrapi(skin + d, 0, M.RABBIT_SKINS.size())
 	skin_label.text = M.RABBIT_SKINS[skin].ad
 	renk.emit(skin)
+
+
+static func best_text(list: Array) -> String:
+	return "En iyi: %s  %d" % [list[0].isim, list[0].puan] if not list.is_empty() else "En iyi: henüz yok"
 
 
 # Skor tablosu satırları; mark sıradaki kayıt "◀" ile işaretlenir.
