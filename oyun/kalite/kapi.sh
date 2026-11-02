@@ -23,7 +23,9 @@ trap geri_yukle EXIT
 # Varsayılan: ekransız (--headless), kullanıcının ekranında pencere açılmaz. Gölgelendirici/parçacık görüntü hatalarını da görmek için
 # pencereli koşu gerekir: GODOT_EKRAN="" ./kapi.sh (nadiren, son kontrolde).
 GODOT_EKRAN=${GODOT_EKRAN---headless}
-SENARYOLAR=(kazan_sofra dokunma bolgeler menu_enter tekrar_enter esc_menu kazan yakalan isim_bos isim_uzun isim_turkce bozuk_cfg skor_bos skor_dolu fare_bos ses duraklat ayar_paneli)
+# Kullanıcının ekranında pencere açılmasın: pencereli koşu yalnızca kullanıcı açıkça isterse (KULLANICI_ONAYI=1).
+if [ -z "$GODOT_EKRAN" ] && [ "${KULLANICI_ONAYI:-0}" != "1" ]; then GODOT_EKRAN=--headless; fi
+SENARYOLAR=(kazan_sofra dokunma bolgeler menu_enter tekrar_enter esc_menu kazan yakalan isim_bos isim_uzun isim_turkce bozuk_cfg skor_bos skor_dolu fare_bos ses duraklat ayar_paneli animasyon carpma_ses)
 
 
 seri=0; toplam=0; hata=0

@@ -4,6 +4,8 @@ extends SceneTree
 # Kullanıcının kaydına dokunmaz: ayarlar user://test_ayar.cfg'de. Sonda "SENARYO OK" ya da "SENARYO HATA" yazar.
 
 const Secim := preload("res://secim.gd")
+const Main := preload("res://main.gd")
+const Ses := preload("res://ses.gd")
 const END_FRAME := 690
 const SOFRA_END_FRAME := 1000  # kazan_sofra: giriş + en çok 10 sn şölen kendiliğinden bitmeli
 const NAMES := {isim_bos = "", isim_uzun = "Çok-uzun-bir-isim-123", isim_turkce = "Şeker Ğığİ"}
@@ -16,6 +18,7 @@ var saw_dog := false
 var saw_goose := false
 var last_us := 0       # kare süresi ölçümü (pencereli çalıştırmada çizim dahil)
 var frame_ms := []
+var rng := {}          # animasyon: eklem -> [en küçük, en büyük] x dönüşü
 
 
 func _initialize() -> void:
@@ -23,6 +26,8 @@ func _initialize() -> void:
 		if a.begins_with("--senaryo="):
 			ad = a.trim_prefix("--senaryo=")
 	Secim.ayar_path = "user://test_ayar.cfg"
+	if ad == "carpma_ses":
+		Main.force_audio = true  # ekransızda da (Dummy sürücü) ses kurulumunu sına
 	if ad == "kazan_sofra":
 		end_frame = SOFRA_END_FRAME
 	match ad:  # senaryo kendi koşulunu kurar, dışarıdaki betiğe güvenmez
@@ -57,8 +62,14 @@ func _process(_d: float) -> bool:
 		if ad == "fare_bos":  # boş yere tıkla: isim kutusu odağı kaybetse de Enter çalışmalı
 			click(Vector2(40, 400))
 		key(KEY_ENTER, true)
+	if f == 2 and "focus_pause" in m and ad != "duraklat":
+		m.focus_pause = false  # pencere odağı oynak: kendiliğinden duraksatma testleri bozmasın
 	if ad == "ses":
 		ses_test(m)
+	if ad == "animasyon":
+		anim_test(m)
+	if ad == "carpma_ses":
+		carpma_test(m)
 	if ad == "duraklat":
 		duraklat_test(m)
 	if ad == "ayar_paneli":
@@ -81,6 +92,12 @@ func _process(_d: float) -> bool:
 		if m.state != "feast":
 			return fail("şölen başlamadı (durum %s)" % m.state)
 		key(KEY_ESCAPE, true)
+	if ad == "animasyon" and f == 120:
+		m.rabbit.position.z = -210.0  # köpek bölgesi: Karabaş çıksın
+		m.prev_dist = 210.0
+		m.next_row_z = -220.0
+	if ad in ["animasyon", "carpma_ses"] and m.state == "run":
+		m.gap = m.GAP_MAX
 	if ad == "bolgeler" and m.state == "run":  # 190 m'den 520 m'yi geçecek hızla: köpek, kaz ve tüm olaylar
 		if f == 120:
 			m.rabbit.position.z = -190.0
@@ -279,7 +296,7 @@ func key(k: Key, down: bool) -> void:
 
 func check(m) -> bool:
 	var want := {menu = "menu", duraklat = "run", ayar_paneli = "run", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
-			isim_bos = "run", isim_uzun = "run", isim_turkce = "run", bolgeler = "run", fare_bos = "run", bozuk_cfg = "over", skor_bos = "over", skor_dolu = "over"}
+			animasyon = "run", carpma_ses = "run", isim_bos = "run", isim_uzun = "run", isim_turkce = "run", bolgeler = "run", fare_bos = "run", bozuk_cfg = "over", skor_bos = "over", skor_dolu = "over"}
 	if not want.has(ad):
 		return fail("bilinmeyen senaryo")
 	var ok_states := [want[ad]] + (["over", "win"] if want[ad] == "run" else [])  # koşu 10 sn'de bitmiş olabilir
@@ -300,11 +317,81 @@ func check(m) -> bool:
 		return fail("boş tabloya tek kayıt eklenmeliydi")
 	if ad == "skor_dolu" and (Secim.load_scores().size() != Secim.TOP or Secim.load_scores()[0].isim != "K0"):
 		return fail("dolu tablo 5'te kesilmeli ve sıralı kalmalı")
+	if ad == "animasyon":
+		for j in ["halil_leg_l", "halil_arm_r", "halil_hat", "rabbit_hind", "rabbit_ears", "dog_front", "dog_tail"]:
+			if not rng.has(j) or rng[j][1] - rng[j][0] < (0.05 if j == "halil_hat" else 0.2) or maxf(absf(rng[j][0]), absf(rng[j][1])) > Main.ANIM_MAX:
+				return fail("eklem %s hareket etmedi ya da sınır dışı: %s" % [j, rng.get(j)])
+	print("YOKLAMA mesh=%d düğüm=%d" % [count(root, true), count(root, false)])
 	frame_ms.sort()
 	print("KARE ms: ortanca %.2f, %%99 %.2f, en kötü %.2f (%d kare)" % [frame_ms[frame_ms.size() / 2], frame_ms[int(frame_ms.size() * 0.99)], frame_ms[-1], frame_ms.size()])
 	print("SENARYO OK ", ad)
 	quit(0)
 	return true
+
+
+func count(n: Node, meshes: bool) -> int:
+	var c := 1 if (not meshes or n is MeshInstance3D) else 0
+	for ch in n.get_children():
+		c += count(ch, meshes)
+	return c
+
+
+# Animasyon: parça/mesh sayıları, eklemler gövdede ve yerinde, eklem açıları hareket eder ve sınırlı kalır (ekransız; görsel doğrulanmaz).
+func anim_test(m) -> void:
+	if f == 14:
+		var kinds := {halil = [m.M.HALIL, m.M.RIG_HALIL], dog = [m.M.DOG, m.M.RIG_DOG], chicken = [m.M.CHICKEN, m.M.RIG_CHICKEN], goose = [m.M.GOOSE, m.M.RIG_GOOSE], rabbit = [m.M.RABBIT, m.M.RIG_RABBIT]}
+		for k in kinds:
+			var n: Node3D = m.model(kinds[k][0], Vector3(0, 0, 500), null, kinds[k][1])
+			var joints: Dictionary = n.get_meta("rig", {})
+			var meshes := count(n, true)
+			print("  ", k, ": mesh ", meshes, ", eklem ", joints.size())
+			if joints.size() != kinds[k][1].size() or meshes != joints.size() + 1 or meshes > 6:
+				fail("%s: eklem %d, mesh %d (beklenen %d, <= 6)" % [k, joints.size(), meshes, kinds[k][1].size() + 1])
+			for g in joints:
+				if joints[g].get_parent() != m.body(n) or not joints[g].position.is_equal_approx(kinds[k][1][g][0]) or joints[g].get_child_count() != 1:
+					fail("%s.%s eklemi gövdeye/yerine bağlı değil" % [k, g])
+			n.queue_free()
+	if f < 125 or m.state != "run":
+		return
+	var rec := {halil_leg_l = [m.halil, "leg_l"], halil_arm_r = [m.halil, "arm_r"], halil_hat = [m.halil, "hat"], rabbit_hind = [m.rabbit, "hind"], rabbit_ears = [m.rabbit, "ears"]}
+	if not m.dog.is_empty():
+		rec.dog_front = [m.dog.node, "front"]
+		rec.dog_tail = [m.dog.node, "tail"]
+	for j in rec:
+		var r: Vector3 = rec[j][0].get_meta("rig")[rec[j][1]].rotation
+		var v := r.y if j == "dog_tail" else (r.z if j == "halil_hat" else r.x)
+		var e: Array = rng.get(j, [v, v])
+		rng[j] = [minf(e[0], v), maxf(e[1], v)]
+
+
+# Çarpma sesi: Dummy sürücüyle ses kurulur, dosyalar yüklenir, her engel türü kendi sesini çalar, eksik dosya sessizce atlanır.
+func carpma_test(m) -> void:
+	if f == 12:
+		if m.snd_pool.size() != m.POOL or m.snd_bank.is_empty():
+			fail("ses kurulmadı (oynatıcı %d)" % m.snd_pool.size())
+		for k in m.HIT_SND.values():
+			if not m.snd_bank.has(k):
+				fail("ses bankasında %s yok" % k)
+		var loaded := Ses.load_files()
+		print("  dosyadan yüklenen: ", loaded.keys())
+		if loaded.size() != Ses.FILES.size() or not loaded.values().all(func(s): return s is AudioStream):
+			fail("ses dosyaları yüklenemedi: %d/%d" % [loaded.size(), Ses.FILES.size()])
+		if not Ses.load_files({yok = "res://ses/yok.ogg"}).is_empty():
+			fail("olmayan dosya sessizce atlanmadı")
+	if f == end_frame - 20:
+		m.release_audio()  # çıkıştan önce oynatıcılar bırakılır
+		OS.delay_msec(500)  # kareler çok hızlı: ses iş parçacığı çalmaları bitirsin diye gerçek süre ver
+	if f == 130 and m.state == "run":
+		for what in m.HIT_SND:
+			m.gap = m.GAP_MAX
+			m.hurt("deneme", what)
+			var pl = m.snd_pool[(m.snd_next + m.POOL - 1) % m.POOL]
+			if pl.stream != m.snd_bank[m.HIT_SND[what]] or pl.volume_db >= -8.0:
+				fail("%s yanlış sesi çaldı ya da seviyesi düşük değil" % what)
+		m.gap = m.GAP_MAX
+		m.hurt("deneme", "")
+		if m.snd_pool[(m.snd_next + m.POOL - 1) % m.POOL].stream != m.snd_bank.bonk:
+			fail("türsüz çarpma bonk çalmadı")
 
 
 func fail(why: String) -> bool:

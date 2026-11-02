@@ -94,7 +94,7 @@ Kaynak: `PLAN-mekanikler.md` bölüm 1 (2026-11-02 eleştirisi).
 
 **Yapıldı:** `PLAN-mekanikler.md` M1–M5 ve T1–T3, `PLAN-grafik.md` G1–G5 ve G7, `PLAN-karakter-secimi.md`, `PLAN-bolum1.md`. Bekleyen: G6 (kontur, kullanıcı kararı).
 
-**Yuva finali (planlandı, modeller hazır):** kazanınca yeni durum `"feast"`: tavşan yuvaya girer, dokunma/tuşla (yoksa otomatik) yığınları yer, en çok 10 sn, Esc/Geç ile atlanır; puan formülü değişmez, bolluk havuç sayısıyla artar (4-12 yığın). Modeller `modeller.gd` içinde: `VEG_TURNIP`, `VEG_CORN`, `VEG_TOMATO`, `VEG_EGGPLANT`, `VEG_CABBAGE`, `CARROT_PILE`, `BURROW_INSIDE` (sözleşme dosyanın başında). Sekans kodu Geliştiricide.
+**Yuva finali (uygulandı, 2026-11-02):** kazanınca yeni durum `"feast"`: tavşan yuvaya girer, dokunma/tuşla (yoksa otomatik) yığınları yer, en çok 10 sn, Esc/Geç ile atlanır; puan formülü değişmez, bolluk havuç sayısıyla artar (4-12 yığın). Modeller `modeller.gd` içinde: `VEG_TURNIP`, `VEG_CORN`, `VEG_TOMATO`, `VEG_EGGPLANT`, `VEG_CABBAGE`, `CARROT_PILE`, `BURROW_INSIDE` (sözleşme dosyanın başında). Sekans kodu Geliştiricide.
 
 **Ardından:** Ayar turu (kullanıcı oynar; hız, zıplama, atış sıklığı, atılım ve kıl payı değerleri ayarlanır). Açılış sahnesi (tavşan havuç kemirir → "HEY!" → 3-2-1) yapıldı.
 
@@ -119,7 +119,7 @@ Kaynak: `PLAN-mekanikler.md` bölüm 1 (2026-11-02 eleştirisi).
 
 ## Ses
 
-- Tüm sesler kodla üretilir (`oyun/ses.gd`, `AudioStreamWAV` 16 bit mono; dosya yok, indirme yok), açılışta bir kez üretilip önbelleğe alınır (~66 ms masaüstü).
+- Sesler kodla üretilir (`oyun/ses.gd`, `AudioStreamWAV` 16 bit mono), açılışta bir kez üretilip önbelleğe alınır (~66 ms masaüstü).
 - Efektler: zıplama, iniş, havuç, çarpma (bonk), atılım, Halil'in fırlatması, kıl payı, Karabaş havlaması, kaz, kazanma, yakalanma, menü tık, "HEY!", yuva kıtırı. Müzik: 8 sn döngülü, sakin C pentatonik melodi + bas, efektlerin altında (-22 dB).
 - Ses düğmesi: menüde sağ altta, oyunda sağ üstte ("Ses: Açık/Kapalı", 150x60); oyunda M tuşu (menüde M isim kutusuna yazıldığı için yalnız düğme). Seçim `ayar.cfg [ayar] ses` (varsayılan açık).
 - Ekransızda (kalite kapısı) ses kurulmaz; ayar mantığı yine çalışır.
@@ -131,3 +131,10 @@ Kaynak: `PLAN-mekanikler.md` bölüm 1 (2026-11-02 eleştirisi).
 - **Renk körlüğü:** Halil çubuğu "güvenli / dikkat ▲ / YAKIN! ▲▲▲" yazar, yakınken kalın koyu kenar çizer. Atış hedef diski kırmızı disk + beyaz X.
 - **Duraksat:** P / Esc / gamepad Start, HUD'da II düğmesi, sekme gizlenince ya da odak kaybında otomatik (Esc bitişte hâlâ menüye döner). Devam: dokun ya da tuş.
 - **Ayar paneli** (menüde sol üstteki "Ayarlar", duraklatmadan "Ayarlar"): ses, titreşim, sarsıntı, yavaş mod. `ayar.cfg [ayar]`: `ses`, `titresim`, `sarsinti`, `yavas`. Yavaş mod yalnız koşu hızını %85'e çarpar; çarpışma, çit 0,6 / varil 1,6, puan formülü aynı, puan tablosuna yine yazılır.
+- **Çarpma sesleri (tur 2):** engel türüne göre ayrı ses: çit, varil, kova, köpek, yumurta, lahana, tırmık için 7 küçük CC0 `.ogg` (`oyun/ses/`, Kenney "Impact Sounds", toplam ~54 KB, kaynaklar `oyun/ses/LISANSLAR.md`); tavuk gıdaklaması kodla üretilir. Dosya yoksa ya da bozuksa üretilmiş yedek çalar. Seviye efektlerden 3 dB düşük.
+
+## Hayvan ve Halil animasyonları (tur 2)
+
+- Halil, Karabaş, tavuk, kaz ve tavşan parçaları 2-5 eklem grubuna bölünür (`modeller.gd` `RIG_*`); her grup tek mesh, eklem noktasında bir `Node3D`. Varlık başına en çok 6 mesh. Dönüşler `main.gd` `anim_pose` (sin) ile, yeni düğüm üretmeden.
+- Halil: bacak/kol salınımı, gövde sallanması, şapka zıplar, fırlatırken sağ kol kalkar. Karabaş: dörtnala bacaklar, kuyruk sallama, kulak çırpma. Tavuk: bacak, gagalama, tavşan 4 m yaklaşınca kanat çırpma. Kaz: boyun sallanması, öterken kanat çırpma. Tavşan: kulak ve arka bacak.
+- Yalnız görsel: hitbox, çit 0,6, varil 1,6, puan ve kıl payı mantığı değişmedi. Hayvanlar tavşana 35 m'den uzaktayken animasyonsuz.

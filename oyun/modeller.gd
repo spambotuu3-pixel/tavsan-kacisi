@@ -41,13 +41,13 @@ const WHISKER := Color(0.35, 0.28, 0.28)
 const RABBIT := [
 	[Vector3(0.6, 0.5, 0.7), FUR, Vector3(0, -0.02, 0.05), "s"],                         # gövde
 	[Vector3(0.5, 0.46, 0.46), FUR, Vector3(0, 0.3, -0.3), "s"],                         # kafa
-	[Vector3(0.13, 0.55, 0.09), FUR, Vector3(-0.13, 0.72, -0.28), "c", Vector3(0, 0, 12)],   # kulaklar, dışa eğik
-	[Vector3(0.13, 0.55, 0.09), FUR, Vector3(0.13, 0.72, -0.28), "c", Vector3(0, 0, -12)],
-	[Vector3(0.07, 0.4, 0.03), EAR_PINK, Vector3(-0.13, 0.72, -0.33), "c", Vector3(0, 0, 12)],  # kulak içi
-	[Vector3(0.07, 0.4, 0.03), EAR_PINK, Vector3(0.13, 0.72, -0.33), "c", Vector3(0, 0, -12)],
+	[Vector3(0.13, 0.55, 0.09), FUR, Vector3(-0.13, 0.72, -0.28), "c", Vector3(0, 0, 12), "kulak"],   # kulaklar, dışa eğik
+	[Vector3(0.13, 0.55, 0.09), FUR, Vector3(0.13, 0.72, -0.28), "c", Vector3(0, 0, -12), "kulak"],
+	[Vector3(0.07, 0.4, 0.03), EAR_PINK, Vector3(-0.13, 0.72, -0.33), "c", Vector3(0, 0, 12), "kulak"],  # kulak içi
+	[Vector3(0.07, 0.4, 0.03), EAR_PINK, Vector3(0.13, 0.72, -0.33), "c", Vector3(0, 0, -12), "kulak"],
 	[Vector3(0.24, 0.24, 0.2), TAIL, Vector3(0, 0.05, 0.42), "s"],                       # ponpon kuyruk
-	[Vector3(0.17, 0.36, 0.12), FUR, Vector3(-0.18, -0.24, 0.12), "c", Vector3(90, 0, 0)],   # arka ayaklar
-	[Vector3(0.17, 0.36, 0.12), FUR, Vector3(0.18, -0.24, 0.12), "c", Vector3(90, 0, 0)],
+	[Vector3(0.17, 0.36, 0.12), FUR, Vector3(-0.18, -0.24, 0.12), "c", Vector3(90, 0, 0), "bacak_arka"],   # arka ayaklar
+	[Vector3(0.17, 0.36, 0.12), FUR, Vector3(0.18, -0.24, 0.12), "c", Vector3(90, 0, 0), "bacak_arka"],
 	[Vector3(0.1, 0.1, 0.12), FUR, Vector3(-0.12, -0.25, -0.22), "s"],                   # ön patiler
 	[Vector3(0.1, 0.1, 0.12), FUR, Vector3(0.12, -0.25, -0.22), "s"],
 	[Vector3(0.1, 0.36, 0.1), CARROT_C, Vector3(0.2, 0.2, -0.5), "k", Vector3(0, 0, -100)],  # ağızdaki havuç
@@ -74,39 +74,63 @@ const RABBIT_SKINS := [
 
 # Halil: kök yerden 1.0 yukarıda. Kapsül gövde, büyük kafa, geniş hasır şapka.
 const HALIL := [
-	[Vector3(0.28, 0.7, 0.28), OVERALL, Vector3(-0.18, -0.6, 0), "c"],                  # bacaklar
-	[Vector3(0.28, 0.7, 0.28), OVERALL, Vector3(0.18, -0.6, 0), "c"],
-	[Vector3(0.32, 0.2, 0.42), BOOT, Vector3(-0.18, -0.92, -0.05), "s"],                 # çizmeler
-	[Vector3(0.32, 0.2, 0.42), BOOT, Vector3(0.18, -0.92, -0.05), "s"],
+	[Vector3(0.28, 0.7, 0.28), OVERALL, Vector3(-0.18, -0.6, 0), "c", Vector3.ZERO, "bacak_s"],                  # bacaklar
+	[Vector3(0.28, 0.7, 0.28), OVERALL, Vector3(0.18, -0.6, 0), "c", Vector3.ZERO, "bacak_g"],
+	[Vector3(0.32, 0.2, 0.42), BOOT, Vector3(-0.18, -0.92, -0.05), "s", Vector3.ZERO, "bacak_s"],                 # çizmeler
+	[Vector3(0.32, 0.2, 0.42), BOOT, Vector3(0.18, -0.92, -0.05), "s", Vector3.ZERO, "bacak_g"],
 	[Vector3(0.8, 0.95, 0.55), SHIRT, Vector3(0, 0.1, 0), "c"],                          # gömlek
 	[Vector3(0.7, 0.65, 0.58), OVERALL, Vector3(0, -0.05, 0), "c"],                      # tulum
 	[Vector3(0.1, 0.5, 0.05), OVERALL, Vector3(-0.18, 0.3, 0.27), "c", Vector3(0, 0, -6)],   # sırttaki askılar
 	[Vector3(0.1, 0.5, 0.05), OVERALL, Vector3(0.18, 0.3, 0.27), "c", Vector3(0, 0, 6)],
-	[Vector3(0.2, 0.7, 0.2), SHIRT, Vector3(-0.47, 0.15, 0), "c", Vector3(0, 0, -15)],  # kollar
-	[Vector3(0.2, 0.7, 0.2), SHIRT, Vector3(0.47, 0.15, 0), "c", Vector3(0, 0, 15)],
-	[Vector3(0.18, 0.18, 0.18), SKIN, Vector3(-0.56, -0.22, 0), "s"],                    # eller
-	[Vector3(0.18, 0.18, 0.18), SKIN, Vector3(0.56, -0.22, 0), "s"],
-	[Vector3(0.62, 0.6, 0.6), SKIN, Vector3(0, 0.88, 0), "s"],                           # kafa
-	[Vector3(0.6, 0.4, 0.32), HAIR, Vector3(0, 0.84, 0.15), "s"],                        # ense saçı (arkadan görünür)
-	[Vector3(1.15, 0.05, 1.15), STRAW, Vector3(0, 1.1, 0), "y"],                         # şapka kenarı
-	[Vector3(0.6, 0.3, 0.6), STRAW, Vector3(0, 1.25, 0), "y"],                           # şapka tepesi
-	[Vector3(0.66, 0.08, 0.66), HAT_BAND, Vector3(0, 1.16, 0), "t"],                     # şapka bandı
+	[Vector3(0.2, 0.7, 0.2), SHIRT, Vector3(-0.47, 0.15, 0), "c", Vector3(0, 0, -15), "kol_s"],  # kollar
+	[Vector3(0.2, 0.7, 0.2), SHIRT, Vector3(0.47, 0.15, 0), "c", Vector3(0, 0, 15), "kol_g"],
+	[Vector3(0.18, 0.18, 0.18), SKIN, Vector3(-0.56, -0.22, 0), "s", Vector3.ZERO, "kol_s"],                    # eller
+	[Vector3(0.18, 0.18, 0.18), SKIN, Vector3(0.56, -0.22, 0), "s", Vector3.ZERO, "kol_g"],
+	[Vector3(0.62, 0.6, 0.6), SKIN, Vector3(0, 0.88, 0), "s", Vector3.ZERO, "kafa"],                           # kafa
+	[Vector3(0.6, 0.4, 0.32), HAIR, Vector3(0, 0.84, 0.15), "s", Vector3.ZERO, "kafa"],                        # ense saçı (arkadan görünür)
+	[Vector3(1.15, 0.05, 1.15), STRAW, Vector3(0, 1.1, 0), "y", Vector3.ZERO, "kafa"],                         # şapka kenarı
+	[Vector3(0.6, 0.3, 0.6), STRAW, Vector3(0, 1.25, 0), "y", Vector3.ZERO, "kafa"],                           # şapka tepesi
+	[Vector3(0.66, 0.08, 0.66), HAT_BAND, Vector3(0, 1.16, 0), "t", Vector3.ZERO, "kafa"],                     # şapka bandı
 ]
 
 # Tavuk: kök yerden 0.25 yukarıda.
 const CHICKEN := [
 	[Vector3(0.42, 0.38, 0.5), HEN, Vector3(0, 0, 0.02), "s"],                           # gövde
-	[Vector3(0.1, 0.22, 0.32), HEN, Vector3(-0.2, 0.02, 0.03), "s"],                     # kanatlar
-	[Vector3(0.1, 0.22, 0.32), HEN, Vector3(0.2, 0.02, 0.03), "s"],
-	[Vector3(0.26, 0.26, 0.26), HEN, Vector3(0, 0.24, -0.2), "s"],                       # kafa
-	[Vector3(0.08, 0.08, 0.08), COMB, Vector3(0, 0.4, -0.26), "s"],                      # ibik
-	[Vector3(0.09, 0.09, 0.09), COMB, Vector3(0, 0.42, -0.2), "s"],
-	[Vector3(0.08, 0.08, 0.08), COMB, Vector3(0, 0.4, -0.14), "s"],
-	[Vector3(0.08, 0.12, 0.08), BEAK, Vector3(0, 0.22, -0.36), "k", Vector3(-90, 0, 0)], # gaga
-	[Vector3(0.05, 0.15, 0.05), BEAK, Vector3(-0.08, -0.22, 0), "y"],                    # bacaklar
-	[Vector3(0.05, 0.15, 0.05), BEAK, Vector3(0.08, -0.22, 0), "y"],
+	[Vector3(0.1, 0.22, 0.32), HEN, Vector3(-0.2, 0.02, 0.03), "s", Vector3.ZERO, "kanat_s"],                     # kanatlar
+	[Vector3(0.1, 0.22, 0.32), HEN, Vector3(0.2, 0.02, 0.03), "s", Vector3.ZERO, "kanat_g"],
+	[Vector3(0.26, 0.26, 0.26), HEN, Vector3(0, 0.24, -0.2), "s", Vector3.ZERO, "kafa"],                       # kafa
+	[Vector3(0.08, 0.08, 0.08), COMB, Vector3(0, 0.4, -0.26), "s", Vector3.ZERO, "kafa"],                      # ibik
+	[Vector3(0.09, 0.09, 0.09), COMB, Vector3(0, 0.42, -0.2), "s", Vector3.ZERO, "kafa"],
+	[Vector3(0.08, 0.08, 0.08), COMB, Vector3(0, 0.4, -0.14), "s", Vector3.ZERO, "kafa"],
+	[Vector3(0.08, 0.12, 0.08), BEAK, Vector3(0, 0.22, -0.36), "k", Vector3(-90, 0, 0), "kafa"], # gaga
+	[Vector3(0.05, 0.15, 0.05), BEAK, Vector3(-0.08, -0.22, 0), "y", Vector3.ZERO, "bacak_s"],                    # bacaklar
+	[Vector3(0.05, 0.15, 0.05), BEAK, Vector3(0.08, -0.22, 0), "y", Vector3.ZERO, "bacak_g"],
 	[Vector3(0.28, 0.3, 0.1), HEN, Vector3(0, 0.12, 0.26), "s", Vector3(-30, 0, 0)],    # yelpaze kuyruk
 ]
+
+# --- Hayvan/Halil animasyon iskeleti (Geliştirici + Tasarımcı). Kaynak diziler değişmez; grup = {ad: [eklem konumu, [parça indeksleri]]}.
+# model() her grubu kendi içinde tek mesh yapıp eklem noktasındaki Node3D'ye koyar (varlık başına <= 6 mesh). Dönüşler main.gd anim_pose'ta.
+const RIG_HALIL := {
+	leg_l = [Vector3(-0.18, -0.25, 0), [0, 2]], leg_r = [Vector3(0.18, -0.25, 0), [1, 3]],
+	arm_l = [Vector3(-0.4, 0.48, 0), [8, 10]], arm_r = [Vector3(0.4, 0.48, 0), [9, 11]],
+	hat = [Vector3(0, 1.1, 0), [14, 15, 16]],
+}
+const RIG_DOG := {
+	front = [Vector3(0, -0.02, -0.2), [10, 11]], back = [Vector3(0, -0.02, 0.28), [12, 13]],
+	tail = [Vector3(0, 0.1, 0.4), [14]], ears = [Vector3(0, 0.4, -0.36), [7, 8]],
+}
+const RIG_CHICKEN := {
+	head = [Vector3(0, 0.1, -0.15), [3, 4, 5, 6, 7]],
+	leg_l = [Vector3(-0.08, -0.15, 0), [8]], leg_r = [Vector3(0.08, -0.15, 0), [9]],
+	wing_l = [Vector3(-0.2, 0.12, 0.03), [1]], wing_r = [Vector3(0.2, 0.12, 0.03), [2]],
+}
+const RIG_GOOSE := {
+	neck = [Vector3(0, 0.45, -0.15), [3, 4, 5, 6, 7]],
+	wing_l = [Vector3(-0.2, 0.45, 0.08), [1]], wing_r = [Vector3(0.2, 0.45, 0.08), [2]],
+}
+const RIG_RABBIT := {
+	ears = [Vector3(0, 0.46, -0.28), [2, 3, 4, 5]], hind = [Vector3(0, -0.12, 0.12), [7, 8]],
+}
 
 # Havuç (toplanan): kök yerden 0.3 yukarıda, kendi etrafında döner.
 const CARROT := [
@@ -265,36 +289,36 @@ const TARGET_C := Color(0.95, 0.3, 0.3, 0.55)
 const DOG := [
 	[Vector3(0.32, 0.72, 0.32), DOG_BLACK, Vector3(0, 0.02, 0.05), "c", Vector3(90, 0, 0)],   # gövde
 	[Vector3(0.22, 0.22, 0.12), DOG_WHITE, Vector3(0, 0, -0.28), "s"],                        # göğüs lekesi
-	[Vector3(0.34, 0.31, 0.34), DOG_BLACK, Vector3(0, 0.26, -0.38), "s"],                     # kafa
-	[Vector3(0.17, 0.13, 0.2), DOG_TAN, Vector3(0, 0.2, -0.55), "s"],                         # burun kemiği
-	[Vector3(0.07, 0.05, 0.04), EYE, Vector3(0, 0.24, -0.65), "s"],                           # burun
-	[Vector3(0.05, 0.06, 0.03), EYE, Vector3(-0.08, 0.31, -0.53), "s"],                       # gözler
-	[Vector3(0.05, 0.06, 0.03), EYE, Vector3(0.08, 0.31, -0.53), "s"],
-	[Vector3(0.11, 0.2, 0.06), DOG_BLACK, Vector3(-0.1, 0.47, -0.36), "k", Vector3(0, 0, 12)],  # dik kulaklar
-	[Vector3(0.11, 0.2, 0.06), DOG_BLACK, Vector3(0.1, 0.47, -0.36), "k", Vector3(0, 0, -12)],
+	[Vector3(0.34, 0.31, 0.34), DOG_BLACK, Vector3(0, 0.26, -0.38), "s", Vector3.ZERO, "kafa"],                     # kafa
+	[Vector3(0.17, 0.13, 0.2), DOG_TAN, Vector3(0, 0.2, -0.55), "s", Vector3.ZERO, "kafa"],                         # burun kemiği
+	[Vector3(0.07, 0.05, 0.04), EYE, Vector3(0, 0.24, -0.65), "s", Vector3.ZERO, "kafa"],                           # burun
+	[Vector3(0.05, 0.06, 0.03), EYE, Vector3(-0.08, 0.31, -0.53), "s", Vector3.ZERO, "kafa"],                       # gözler
+	[Vector3(0.05, 0.06, 0.03), EYE, Vector3(0.08, 0.31, -0.53), "s", Vector3.ZERO, "kafa"],
+	[Vector3(0.11, 0.2, 0.06), DOG_BLACK, Vector3(-0.1, 0.47, -0.36), "k", Vector3(0, 0, 12), "kafa"],  # dik kulaklar
+	[Vector3(0.11, 0.2, 0.06), DOG_BLACK, Vector3(0.1, 0.47, -0.36), "k", Vector3(0, 0, -12), "kafa"],
 	[Vector3(0.3, 0.05, 0.3), COLLAR, Vector3(0, 0.12, -0.32), "t", Vector3(-30, 0, 0)],      # tasma
-	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(-0.1, -0.17, -0.2), "y"],                     # bacaklar
-	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(0.1, -0.17, -0.2), "y"],
-	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(-0.1, -0.17, 0.28), "y"],
-	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(0.1, -0.17, 0.28), "y"],
-	[Vector3(0.06, 0.32, 0.06), DOG_BLACK, Vector3(0, 0.24, 0.44), "c", Vector3(35, 0, 0)],  # yukarı kıvrık kuyruk
+	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(-0.1, -0.17, -0.2), "y", Vector3.ZERO, "bacak_on"],                     # bacaklar
+	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(0.1, -0.17, -0.2), "y", Vector3.ZERO, "bacak_on"],
+	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(-0.1, -0.17, 0.28), "y", Vector3.ZERO, "bacak_arka"],
+	[Vector3(0.09, 0.3, 0.09), DOG_TAN, Vector3(0.1, -0.17, 0.28), "y", Vector3.ZERO, "bacak_arka"],
+	[Vector3(0.06, 0.32, 0.06), DOG_BLACK, Vector3(0, 0.24, 0.44), "c", Vector3(35, 0, 0), "kuyruk"],  # yukarı kıvrık kuyruk
 	[Vector3(0.14, 0.08, 0.2), DOG_TAN, Vector3(0, 0.17, 0.12), "s"],                         # sırttaki açık leke
 ]
 
 # Kaz: uzun boyunlu, gri-beyaz, turuncu gaga. Kök y = 0 (yer).
 const GOOSE := [
 	[Vector3(0.42, 0.36, 0.6), GOOSE_C, Vector3(0, 0.32, 0.05), "s"],                         # gövde
-	[Vector3(0.1, 0.24, 0.42), GOOSE_WING, Vector3(-0.2, 0.36, 0.08), "s"],                   # kanatlar
-	[Vector3(0.1, 0.24, 0.42), GOOSE_WING, Vector3(0.2, 0.36, 0.08), "s"],
-	[Vector3(0.11, 0.42, 0.11), GOOSE_C, Vector3(0, 0.62, -0.2), "c", Vector3(-15, 0, 0)],    # boyun
-	[Vector3(0.16, 0.15, 0.2), GOOSE_C, Vector3(0, 0.85, -0.26), "s"],                        # kafa
-	[Vector3(0.08, 0.16, 0.07), BILL, Vector3(0, 0.83, -0.4), "k", Vector3(-90, 0, 0)],       # gaga
-	[Vector3(0.04, 0.05, 0.03), EYE, Vector3(-0.06, 0.88, -0.3), "s"],
-	[Vector3(0.04, 0.05, 0.03), EYE, Vector3(0.06, 0.88, -0.3), "s"],
-	[Vector3(0.04, 0.16, 0.04), BILL, Vector3(-0.08, 0.08, 0.05), "y"],                       # bacaklar
-	[Vector3(0.04, 0.16, 0.04), BILL, Vector3(0.08, 0.08, 0.05), "y"],
-	[Vector3(0.1, 0.03, 0.14), BILL, Vector3(-0.08, 0.01, 0.0), "s"],                         # perdeli ayaklar
-	[Vector3(0.1, 0.03, 0.14), BILL, Vector3(0.08, 0.01, 0.0), "s"],
+	[Vector3(0.1, 0.24, 0.42), GOOSE_WING, Vector3(-0.2, 0.36, 0.08), "s", Vector3.ZERO, "kanat_s"],                   # kanatlar
+	[Vector3(0.1, 0.24, 0.42), GOOSE_WING, Vector3(0.2, 0.36, 0.08), "s", Vector3.ZERO, "kanat_g"],
+	[Vector3(0.11, 0.42, 0.11), GOOSE_C, Vector3(0, 0.62, -0.2), "c", Vector3(-15, 0, 0), "boyun"],    # boyun
+	[Vector3(0.16, 0.15, 0.2), GOOSE_C, Vector3(0, 0.85, -0.26), "s", Vector3.ZERO, "boyun"],                        # kafa
+	[Vector3(0.08, 0.16, 0.07), BILL, Vector3(0, 0.83, -0.4), "k", Vector3(-90, 0, 0), "boyun"],       # gaga
+	[Vector3(0.04, 0.05, 0.03), EYE, Vector3(-0.06, 0.88, -0.3), "s", Vector3.ZERO, "boyun"],
+	[Vector3(0.04, 0.05, 0.03), EYE, Vector3(0.06, 0.88, -0.3), "s", Vector3.ZERO, "boyun"],
+	[Vector3(0.04, 0.16, 0.04), BILL, Vector3(-0.08, 0.08, 0.05), "y", Vector3.ZERO, "bacak_s"],                       # bacaklar
+	[Vector3(0.04, 0.16, 0.04), BILL, Vector3(0.08, 0.08, 0.05), "y", Vector3.ZERO, "bacak_g"],
+	[Vector3(0.1, 0.03, 0.14), BILL, Vector3(-0.08, 0.01, 0.0), "s", Vector3.ZERO, "bacak_s"],                         # perdeli ayaklar
+	[Vector3(0.1, 0.03, 0.14), BILL, Vector3(0.08, 0.01, 0.0), "s", Vector3.ZERO, "bacak_g"],
 	[Vector3(0.2, 0.14, 0.14), GOOSE_WING, Vector3(0, 0.4, 0.36), "s", Vector3(30, 0, 0)],    # kuyruk
 ]
 
@@ -535,3 +559,125 @@ const BURROW_INSIDE := [
 	[Vector3(0.4, 0.25, 0.35), ROCK_C, Vector3(-1.6, 0.1, -3.3), "s"],
 ]
 
+
+# --- Eklem noktaları (PLAN-canlilik-dolap.md A2): her grubun dönme noktası, köke göre. ---
+# Grup adı parçanın 6. alanında. s = sol (-x), g = sağ (+x); ileri -z. Eklemler iç içe değil: kafayla dönmesi
+# gereken kulak/gaga/ibik/şapka kafa (ya da boyun) grubunda tutuldu, ayrı grup yapılmadı.
+const RABBIT_EKLEM := {
+	kulak = Vector3(0, 0.48, -0.3),          # kulak dibi, kafanın tepesi
+	bacak_arka = Vector3(0, -0.14, 0.12),    # kalça; arka ayaklar birlikte iter (zıplayan tavşan)
+}
+const HALIL_EKLEM := {
+	bacak_s = Vector3(-0.18, -0.25, 0),      # kalça; çizme bacakla birlikte
+	bacak_g = Vector3(0.18, -0.25, 0),
+	kol_s = Vector3(-0.42, 0.48, 0),         # omuz; el kolla birlikte
+	kol_g = Vector3(0.42, 0.48, 0),          # fırlatma kolu
+	kafa = Vector3(0, 0.6, 0),               # boyun; saç ve şapka kafayla döner
+}
+const CHICKEN_EKLEM := {
+	bacak_s = Vector3(-0.08, -0.14, 0),
+	bacak_g = Vector3(0.08, -0.14, 0),
+	kanat_s = Vector3(-0.18, 0.12, 0.03),    # kanat kökü (üstte): çırparken aşağı-yukarı döner
+	kanat_g = Vector3(0.18, 0.12, 0.03),
+	kafa = Vector3(0, 0.12, -0.14),          # boyun dibi; ibik ve gaga kafayla
+}
+const DOG_EKLEM := {
+	kafa = Vector3(0, 0.14, -0.3),           # boyun; kulaklar, burun, gözler kafayla
+	bacak_on = Vector3(0, -0.03, -0.2),      # ön bacak çifti (dörtnala: ön ve arka çift zıt fazda)
+	bacak_arka = Vector3(0, -0.03, 0.28),
+	kuyruk = Vector3(0, 0.12, 0.34),         # kuyruk dibi
+}
+const GOOSE_EKLEM := {
+	boyun = Vector3(0, 0.44, -0.18),         # boyun dibi; kafa, gaga, gözler boyunla
+	kanat_s = Vector3(-0.18, 0.44, 0.08),
+	kanat_g = Vector3(0.18, 0.44, 0.08),
+	bacak_s = Vector3(-0.08, 0.16, 0.05),    # bacak üstü; perdeli ayak bacakla
+	bacak_g = Vector3(0.08, 0.16, 0.05),
+}
+
+# --- Kıyafet dolabı (PLAN-kostum-magaza.md, PLAN-canlilik-dolap.md K2). Yalnız görünüm, oynanışa etkisi yok. ---
+# OUTFITS[id] = {ad, kime ("tavsan" | "halil"), fiyat (havuç), yuva, parts, eklem?, gizle?}
+#   yuva: bas | boyun | yuz | sirt | govde; aynı yuvaya tek öğe takılır.
+#   parts: modelin köküne göre (tavşan kökü / Halil kökü), parça biçimi aynı. En çok 6 parça, renkler opak,
+#          FUR/EAR_PINK/TAIL ve SWAY_COLORS kullanılmaz (renk seti değişimi ve rüzgar kıyafeti etkilemesin).
+#   eklem: kafayla dönsün diye bağlanacağı grup (Halil "kafa"); yoksa gövdeye (body) bağlanır.
+#   gizle: takılınca temel modelden çıkarılacak parça renkleri (Halil'in hasır şapkası: STRAW, HAT_BAND).
+# Fiyatlar tahmin; ayar turunda gerçek havuç ortalamasına göre değişir (tek yer burası).
+const SCARF_RED := Color(0.78, 0.24, 0.24)
+const BOW_PURPLE := Color(0.48, 0.29, 0.65)
+const SHADES := Color(0.17, 0.15, 0.2)
+const FLOWER_PINK := Color(0.95, 0.5, 0.65)
+const CAPE_RED := Color(0.82, 0.2, 0.22)
+const GOLD := Color(0.91, 0.73, 0.14)
+const RUBY := Color(0.8, 0.1, 0.2)
+const PLAID_RED := Color(0.72, 0.22, 0.2)
+const CAP_BLUE := Color(0.24, 0.43, 0.71)
+const COWBOY_BROWN := Color(0.5, 0.33, 0.2)
+const COWBOY_BAND := Color(0.25, 0.16, 0.1)
+const VEST_BROWN := Color(0.45, 0.3, 0.2)
+const CHEF_WHITE := Color(0.97, 0.97, 0.95)
+
+const OUTFITS := {
+	# Tavşan: baş tepesi y ≈ 0.53, kafa merkezi (0, 0.3, -0.3), yüz önü z ≈ -0.53, kulak dibi x = ±0.13.
+	t_fular = {ad = "Kırmızı fular", kime = "tavsan", fiyat = 20, yuva = "boyun", parts = [
+		[Vector3(0.44, 0.08, 0.44), SCARF_RED, Vector3(0, 0.12, -0.2), "t", Vector3(-25, 0, 0)],
+		[Vector3(0.1, 0.08, 0.06), SCARF_RED, Vector3(0, 0.08, -0.42), "s"],                # düğüm
+		[Vector3(0.08, 0.26, 0.04), SCARF_RED, Vector3(0.1, 0.02, 0.0), "c", Vector3(25, 0, 12)],  # arkadan sarkan uç (koşuda görünür)
+	]},
+	t_sapka = {ad = "Çiçekli hasır şapka", kime = "tavsan", fiyat = 30, yuva = "bas", parts = [
+		[Vector3(0.52, 0.03, 0.52), STRAW, Vector3(0, 0.52, -0.3), "y"],                    # kenar
+		[Vector3(0.3, 0.12, 0.3), STRAW, Vector3(0, 0.58, -0.3), "y"],                      # tepe (kulaklar içinden yukarı taşar)
+		[Vector3(0.31, 0.03, 0.31), HAT_BAND, Vector3(0, 0.55, -0.3), "t"],
+		[Vector3(0.09, 0.09, 0.06), FLOWER_PINK, Vector3(0.12, 0.57, -0.44), "s"],          # çiçek
+		[Vector3(0.04, 0.04, 0.04), YOLK, Vector3(0.12, 0.57, -0.475), "s"],
+	]},
+	t_gozluk = {ad = "Güneş gözlüğü", kime = "tavsan", fiyat = 40, yuva = "yuz", parts = [
+		[Vector3(0.13, 0.1, 0.03), SHADES, Vector3(-0.11, 0.37, -0.54), "s"],
+		[Vector3(0.13, 0.1, 0.03), SHADES, Vector3(0.11, 0.37, -0.54), "s"],
+		[Vector3(0.08, 0.02, 0.02), SHADES, Vector3(0, 0.39, -0.545)],                     # köprü
+	]},
+	t_papyon = {ad = "Papyon", kime = "tavsan", fiyat = 50, yuva = "boyun", parts = [
+		[Vector3(0.1, 0.08, 0.05), BOW_PURPLE, Vector3(-0.065, 0.07, -0.38), "s", Vector3(0, 0, 15)],
+		[Vector3(0.1, 0.08, 0.05), BOW_PURPLE, Vector3(0.065, 0.07, -0.38), "s", Vector3(0, 0, -15)],
+		[Vector3(0.05, 0.05, 0.05), BOW_PURPLE, Vector3(0, 0.07, -0.395), "s"],             # düğüm
+	]},
+	t_pelerin = {ad = "Kahraman pelerini", kime = "tavsan", fiyat = 80, yuva = "sirt", parts = [
+		[Vector3(0.5, 0.48, 0.05), CAPE_RED, Vector3(0, -0.02, 0.4), "s", Vector3(30, 0, 0)],  # sırttaki panel (koşuda en görünür)
+		[Vector3(0.38, 0.05, 0.38), GOLD, Vector3(0, 0.13, -0.17), "t", Vector3(-20, 0, 0)],   # yaka
+		[Vector3(0.06, 0.06, 0.04), GOLD, Vector3(0, 0.11, -0.37), "s"],                       # düğme
+	]},
+	t_tac = {ad = "Altın taç", kime = "tavsan", fiyat = 150, yuva = "bas", parts = [
+		[Vector3(0.34, 0.06, 0.34), GOLD, Vector3(0, 0.53, -0.3), "t"],
+		[Vector3(0.07, 0.13, 0.07), GOLD, Vector3(0, 0.61, -0.46), "k"],                    # uçlar önde (yanlarda kulaklar var)
+		[Vector3(0.06, 0.11, 0.06), GOLD, Vector3(-0.11, 0.6, -0.42), "k"],
+		[Vector3(0.06, 0.11, 0.06), GOLD, Vector3(0.11, 0.6, -0.42), "k"],
+		[Vector3(0.05, 0.05, 0.03), RUBY, Vector3(0, 0.54, -0.475), "s"],                   # taş
+	]},
+	# Halil: kafa merkezi (0, 0.88, 0), kafa tepesi y ≈ 1.18; kamera arkada, şapka ve sırt en görünür.
+	h_esarp = {ad = "Kareli eşarp", kime = "halil", fiyat = 20, yuva = "boyun", eklem = "kafa", parts = [
+		[Vector3(0.44, 0.08, 0.44), PLAID_RED, Vector3(0, 0.58, 0), "t"],
+		[Vector3(0.1, 0.08, 0.07), PLAID_RED, Vector3(0, 0.53, -0.25), "s"],
+		[Vector3(0.22, 0.2, 0.05), PLAID_RED, Vector3(0, 0.44, -0.27), "k", Vector3(180, 0, 0)],  # önde sarkan üçgen
+	]},
+	h_kasket = {ad = "Mavi kasket", kime = "halil", fiyat = 30, yuva = "bas", eklem = "kafa", gizle = [STRAW, HAT_BAND], parts = [
+		[Vector3(0.66, 0.32, 0.66), CAP_BLUE, Vector3(0, 1.12, 0.02), "s"],
+		[Vector3(0.42, 0.04, 0.26), CAP_BLUE, Vector3(0, 1.06, -0.38), "s"],                # siper
+		[Vector3(0.07, 0.05, 0.07), CHEF_WHITE, Vector3(0, 1.28, 0.02), "s"],               # düğme
+	]},
+	h_kovboy = {ad = "Kovboy şapkası", kime = "halil", fiyat = 50, yuva = "bas", eklem = "kafa", gizle = [STRAW, HAT_BAND], parts = [
+		[Vector3(1.2, 0.05, 0.95), COWBOY_BROWN, Vector3(0, 1.12, 0), "y"],                 # geniş kenar
+		[Vector3(0.12, 0.1, 0.9), COWBOY_BROWN, Vector3(-0.56, 1.17, 0), "c", Vector3(90, 0, 0)],  # yukarı kıvrık yanlar
+		[Vector3(0.12, 0.1, 0.9), COWBOY_BROWN, Vector3(0.56, 1.17, 0), "c", Vector3(90, 0, 0)],
+		[Vector3(0.56, 0.36, 0.5), COWBOY_BROWN, Vector3(0, 1.31, 0), "y"],                 # tepe
+		[Vector3(0.58, 0.06, 0.52), COWBOY_BAND, Vector3(0, 1.17, 0), "t"],
+	]},
+	h_yelek = {ad = "Deri yelek", kime = "halil", fiyat = 60, yuva = "govde", parts = [
+		[Vector3(0.86, 0.72, 0.6), VEST_BROWN, Vector3(0, 0.22, 0), "c"],                   # sırtı da örter (askılar altında kalır)
+		[Vector3(0.05, 0.05, 0.03), GOLD, Vector3(0.08, 0.32, -0.3), "s"],                  # düğmeler
+		[Vector3(0.05, 0.05, 0.03), GOLD, Vector3(0.08, 0.16, -0.3), "s"],
+	]},
+	h_asci = {ad = "Aşçı şapkası", kime = "halil", fiyat = 100, yuva = "bas", eklem = "kafa", gizle = [STRAW, HAT_BAND], parts = [
+		[Vector3(0.62, 0.16, 0.62), CHEF_WHITE, Vector3(0, 1.15, 0), "y"],                  # bant
+		[Vector3(0.78, 0.46, 0.78), CHEF_WHITE, Vector3(0, 1.4, 0), "s"],                   # kabarık tepe
+	]},
+}

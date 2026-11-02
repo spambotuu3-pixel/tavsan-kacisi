@@ -77,6 +77,11 @@ const FLASH_ALPHA := 0.5
 const HITSTOP := 0.05      # vurulunca oyun bu kadar donar (sn)
 const SLOW_MULT := 0.85    # yavaş mod: yalnız koşu hızı çarpanı
 const RESUME_GUARD := 6    # kare; devam eden dokunma/tuş oyuna eylem olarak geçmesin (ms)
+const HIT_SND := {"çit": "hit_fence", "varil": "hit_barrel", "tavuk": "hit_chicken", "köpek": "hit_dog", "kova": "hit_bucket",
+		"yumurta": "hit_egg", "lahana": "hit_cabbage", "tırmık": "hit_rake"}  # engel türü -> ses anahtarı (bilinmeyen: bonk)
+const HIT_TRIM := -3.0     # çarpma sesleri efekt seviyesinin biraz altında
+const ANIM_DIST := 35.0    # hayvan animasyonu yalnız bu kadar yakındakilerde çalışır (m)
+const ANIM_MAX := 2.7      # hiçbir eklem bu açıyı (rad) aşmaz: test.gd
 const POOL := 6  # eşzamanlı efekt oynatıcı sayısı (sabit)
 
 static var go_menu := true  # sahne yenilense de korunur: bitişte Enter menüyü atlar, Esc menüye döner
@@ -148,6 +153,8 @@ var jump_t := 0.0       # zıplama tamponu
 var last_free := 1      # önceki sıranın boş şeridi
 var gap_shown := GAP_MAX  # Halil'in ekrandaki mesafesi; gap'e yumuşakça yaklaşır
 var dash_t := 0.0
+var halil_throw := 0.0  # 1: kol havada, 0'a iner
+var focus_pause := true  # senaryo kapatır (pencere odağı oynak)
 var clock := 0.0
 var lane_left := -1     # en son terk edilen şerit (kıl payı için)
 var lane_left_t := -9.0
@@ -243,6 +250,40 @@ const HUD_WARN := Color(0.96, 0.75, 0.25)
 
 
 # ayar.cfg değeri bool değilse varsayılana düşer.
+static var force_audio := false  # senaryo: ekransızda da (Dummy sürücüyle) ses kurulumunu sına
+
+
+static func hit_snd(what: String) -> String:
+	return HIT_SND.get(what, "bonk")
+
+
+# Eklem dönüşleri (rad, Euler): x>0 sarkan uzvu ileri (-z) savurur. a: 0..1 ek durum (Halil fırlatıyor, tavuk ürküyor, kaz öter, tavşan havada).
+static func anim_pose(kind: String, t: float, ph: float, a := 0.0) -> Dictionary:
+	match kind:
+		"halil":
+			var w := t * 10.0 + ph
+			return {leg_l = Vector3(sin(w) * 0.7, 0, 0), leg_r = Vector3(-sin(w) * 0.7, 0, 0), arm_l = Vector3(-sin(w) * 0.6, 0, 0),
+					arm_r = Vector3(lerpf(sin(w) * 0.6, 2.6, a), 0, 0), hat = Vector3(sin(w * 2.0) * 0.06, 0, sin(w) * 0.05), body = Vector3(0, 0, sin(w) * 0.05)}
+		"dog":
+			var w := t * 16.0 + ph
+			return {front = Vector3(sin(w) * 0.9, 0, 0), back = Vector3(sin(w + 0.9) * 0.9, 0, 0), tail = Vector3(0, sin(t * 20.0 + ph) * 0.7, 0),
+					ears = Vector3(0.3 + sin(w) * 0.3, 0, 0), body = Vector3(sin(w) * 0.05, 0, 0)}
+		"chicken":
+			var w := t * 9.0 + ph
+			var flap := a * (0.5 + 0.5 * sin(t * 30.0 + ph)) * 0.9
+			return {leg_l = Vector3(sin(w) * (0.6 + a * 0.3), 0, 0), leg_r = Vector3(-sin(w) * (0.6 + a * 0.3), 0, 0),
+					head = Vector3(-pow(maxf(sin(t * 2.6 + ph), 0.0), 6.0) * 0.8, 0, 0),
+					wing_l = Vector3(0, 0, -(0.1 + flap)), wing_r = Vector3(0, 0, 0.1 + flap), body = Vector3(0, 0, sin(w) * 0.06)}
+		"goose":
+			var w := t * 2.0 + ph
+			var flap := a * (0.6 + 0.6 * sin(t * 26.0 + ph))
+			return {neck = Vector3(sin(w) * 0.1 - a * 0.4, 0, 0), wing_l = Vector3(0, 0, -(0.05 + flap)), wing_r = Vector3(0, 0, 0.05 + flap)}
+		"rabbit":
+			var w := t * BOB_SPEED + ph
+			return {ears = Vector3(0.2 + sin(w) * 0.25 + a * 0.4, 0, 0), hind = Vector3(sin(w) * 0.6 - a * 0.5, 0, 0)}
+	return {}
+
+
 static func flag(v: Variant, def: bool) -> bool:
 	return v if v is bool else def
 
@@ -393,6 +434,21 @@ func body(n: Node3D) -> Node3D:
 
 
 # Köşe renkli şekil kopyası (renk sRGB, shader doğrusala çevirir).
+# Pozu eklem düğümlerine uygular (yeni düğüm yok). Rigsiz düğümde hiçbir şey yapmaz.
+func apply_pose(n: Node3D, kind: String, t: float, ph: float, a := 0.0) -> void:
+	var joints: Dictionary = n.get_meta("rig", {})
+	if joints.is_empty():
+		return
+	var pose := anim_pose(kind, t, ph, a)
+	for g in pose:
+		if g == "body":
+			body(n).rotation = pose[g]
+		else:
+			joints[g].rotation = pose[g]
+	if kind == "halil":
+		joints.hat.position.y = M.RIG_HALIL.hat[0].y + absf(sin(t * 10.0 + ph)) * 0.04  # şapka hafif zıplar
+
+
 func color_mesh(shape: String, color: Color) -> Mesh:
 	var key := [shape, color]
 	if not vmeshes.has(key):
@@ -409,7 +465,8 @@ func color_mesh(shape: String, color: Color) -> Mesh:
 
 # Parça: [boyut, renk, konum, şekil?, dönüş(derece)?]
 # Opak ve sallanmayan parçalar tek mesh'e birleşir (çizim çağrısı); saydam ve rüzgarda sallanan parçalar ayrı kalır.
-func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
+# rig (isteğe bağlı) = {grup: [eklem, [parça indeksleri]]}: grup kendi tek mesh'i ve eklem Node3D'si olur (root meta "rig": ad -> Node3D).
+func model(parts: Array, pos: Vector3, parent: Node = null, rig := {}) -> Node3D:
 	var root := Node3D.new()
 	root.position = pos
 	(parent if parent else self).add_child(root)
@@ -417,7 +474,14 @@ func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
 	root.add_child(body)
 	var st := SurfaceTool.new()
 	var merged := 0
-	for pt in parts:
+	var owner_of := {}  # parça indeksi -> grup adı
+	var sts := {}       # grup adı -> SurfaceTool
+	for g in rig:
+		sts[g] = SurfaceTool.new()
+		for i in rig[g][1]:
+			owner_of[i] = g
+	for idx in parts.size():
+		var pt: Array = parts[idx]
 		var shape: String = pt[3] if pt.size() > 3 else "b"
 		var rot: Vector3 = pt[4] if pt.size() > 4 else Vector3.ZERO
 		var color: Color = pt[1]
@@ -425,8 +489,12 @@ func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
 			box(pt[0], color, pt[2], body, shape, rot)
 			continue
 		var basis := Basis.from_euler(rot * (PI / 180.0), EULER_ORDER_YXZ) * Basis.from_scale(pt[0] * SHAPE_FIX.get(shape, Vector3.ONE))
-		st.append_from(color_mesh(shape, color), 0, Transform3D(basis, pt[2]))
-		merged += 1
+		var g: String = owner_of.get(idx, "")
+		if g != "":
+			sts[g].append_from(color_mesh(shape, color), 0, Transform3D(basis, pt[2] - rig[g][0]))
+		else:
+			st.append_from(color_mesh(shape, color), 0, Transform3D(basis, pt[2]))
+			merged += 1
 	if merged > 0:
 		if not merged_mat:
 			merged_mat = ShaderMaterial.new()
@@ -439,6 +507,18 @@ func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
 		mi.mesh = st.commit()
 		mi.material_override = merged_mat
 		body.add_child(mi)
+	if not rig.is_empty():
+		var joints := {}
+		for g in rig:
+			var j := Node3D.new()  # eklem: dönüş buradan, mesh eklem merkezine göre
+			j.position = rig[g][0]
+			body.add_child(j)
+			var gm := MeshInstance3D.new()
+			gm.mesh = sts[g].commit()
+			gm.material_override = merged_mat
+			j.add_child(gm)
+			joints[g] = j
+		root.set_meta("rig", joints)
 	return root
 
 
@@ -515,7 +595,7 @@ func _ready() -> void:
 	var choice := Secim.load_choice()
 	make_rabbit(choice.skin)
 	rabbit_name = Secim.clean_name(choice.isim, M.RABBIT_SKINS[choice.skin].ad)
-	halil = model(M.HALIL, Vector3(0, 1, 7))
+	halil = model(M.HALIL, Vector3(0, 1, 7), null, M.RIG_HALIL)
 	model(M.SHADOW_BLOB, Vector3(0, -0.98, 0), halil).scale = Vector3.ONE * 1.3
 	cam = Camera3D.new()
 	var cam_fx := CameraAttributesPractical.new()  # minyatür oyuncak dünya: uzak tepeler hafif bulanık
@@ -690,7 +770,9 @@ func make_hud() -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		release_audio()
+	if focus_pause and (what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT):
 		pause_game()  # telefonda uygulama arka plana gidince / masaüstünde pencere odağı kaybolunca
 
 
@@ -876,7 +958,7 @@ func make_rabbit(s: int) -> void:
 		turn = rabbit.rotation.y
 		rabbit.free()
 	skin = s
-	rabbit = model(Secim.skin_parts(M.RABBIT, M.RABBIT_SKINS[s]), Vector3(0, 0.3, 0))
+	rabbit = model(Secim.skin_parts(M.RABBIT, M.RABBIT_SKINS[s]), Vector3(0, 0.3, 0), null, M.RIG_RABBIT)
 	rabbit.rotation.y = turn
 	bucket = model(M.BUCKET_HAT, Vector3.ZERO, body(rabbit))  # body altında: sallanmayla oynar
 	bucket.visible = false
@@ -1128,20 +1210,20 @@ func spawn_row(z: float) -> void:
 		var ln: int = used[i]
 		var x: float = LANES[ln]
 		match randi() % 4:
-			0: items.append({node = model(M.FENCE, Vector3(x, 0.3, z)), kind = "hit", h = 0.6})   # çit: atla
-			1: items.append({node = model(M.BARREL, Vector3(x, 0.8, z)), kind = "hit", h = 1.6})  # varil: şerit değiştir
+			0: items.append({node = model(M.FENCE, Vector3(x, 0.3, z)), kind = "hit", h = 0.6, snd = "çit"})   # çit: atla
+			1: items.append({node = model(M.BARREL, Vector3(x, 0.8, z)), kind = "hit", h = 1.6, snd = "varil"})  # varil: şerit değiştir
 			2:  # tavuk kendi şeridiyle boş olmayan komşusu arasında gider, boş şeride girmez
 				var nb := near_lanes(ln).filter(func(o): return o != keep)
 				var home: float = (x + LANES[nb.pick_random()]) / 2.0 if not nb.is_empty() else x
-				var hen := model(M.CHICKEN, Vector3(x, 0.25, z))
+				var hen := model(M.CHICKEN, Vector3(x, 0.25, z), null, M.RIG_CHICKEN)
 				model(M.SHADOW_BLOB, Vector3(0, -0.23, 0), hen).scale = Vector3.ONE * 0.6
-				items.append({node = hen, kind = "chicken", h = 0.5, phase = randf() * TAU, home = home})
+				items.append({node = hen, kind = "chicken", h = 0.5, phase = randf() * TAU, home = home, snd = "tavuk", anim = "chicken"})
 			3: items.append({node = model(M.CARROT, Vector3(x, 0.3, z)), kind = "carrot", h = 1.0})
 	if randf() < 0.5:
 		items.append({node = model(M.CARROT, Vector3(LANES[keep], 0.3, z)), kind = "carrot", h = 1.0})
 	if zone(-z) == "kumes" and randf() < GOOSE_CHANCE:  # yol kenarında kaz: yanından geçersen öter
 		var side: int = [-1, 1].pick_random()
-		items.append({node = model(M.GOOSE, Vector3(side * GOOSE_X, 0, z)), kind = "goose", lane = 1 + side, h = 0.0})  # h 0: hits() hiç tutmaz, kaz çarpmaz
+		items.append({node = model(M.GOOSE, Vector3(side * GOOSE_X, 0, z), null, M.RIG_GOOSE), kind = "goose", lane = 1 + side, h = 0.0, phase = randf() * TAU, anim = "goose", honk = 0.0})  # h 0: hits() hiç tutmaz, kaz çarpmaz
 	for it in items.slice(first):  # "pop" diye belirsin
 		var n: Node3D = it.node
 		n.scale = Vector3.ONE * 0.01  # tam 0 ölçek dönüşümü bozar
@@ -1152,7 +1234,7 @@ func spawn_row(z: float) -> void:
 func run_dog(delta: float, p: Vector3, r: Vector3) -> void:
 	dog_t -= delta
 	if dog.is_empty() and dog_t <= 0.0 and zone(-p.z) == "kopek":
-		dog = {node = model(M.DOG, Vector3(LANES[lane], 0.3, p.z + DOG_START)), warn = model(M.WARN_STRIP, Vector3(LANES[lane], 0.03, p.z)),
+		dog = {node = model(M.DOG, Vector3(LANES[lane], 0.3, p.z + DOG_START), null, M.RIG_DOG), warn = model(M.WARN_STRIP, Vector3(LANES[lane], 0.03, p.z)),
 				lane = lane, rel = DOG_START}
 		say("Hav! Karabaş arkanda")
 		play("bark")
@@ -1161,13 +1243,14 @@ func run_dog(delta: float, p: Vector3, r: Vector3) -> void:
 	var was: float = dog.rel
 	dog.rel -= DOG_START / DOG_WARN * delta
 	dog.node.position = Vector3(LANES[dog.lane], 0.3, p.z + dog.rel)
+	apply_pose(dog.node, "dog", clock, 0.0)
 	if dog.warn:
 		dog.warn.position = Vector3(LANES[dog.lane], 0.03, p.z)
 	if was > 0.0 and dog.rel <= 0.0:  # tavşanın hizasına geldi
 		dog.warn.queue_free()
 		dog.warn = null
 		if hits(r, LANES[dog.lane], p.z, DOG_H):
-			hurt("Karabaş yakaladı! Halil yaklaşıyor")
+			hurt("Karabaş yakaladı! Halil yaklaşıyor", "köpek")
 	if dog.rel < -25.0:  # tavşanı geçip ileride kayboldu
 		dog.node.queue_free()
 		dog = {}
@@ -1186,9 +1269,9 @@ func say(text: String) -> void:
 	msg_t = 1.5
 
 
-func hurt(text: String) -> void:
+func hurt(text: String, what := "") -> void:
 	gap -= HIT_COST
-	play("bonk")
+	play(hit_snd(what))
 	blink_t = BLINK_TIME
 	say(text)
 	pop(text, HUD_DANGER)  # önemli mesaj ortada da görünsün
@@ -1308,6 +1391,9 @@ func _process(delta: float) -> void:
 	var t := clock  # oyun saati: düşük FPS'te (MAX_DT) tavuklar da oyunla aynı yavaşlar
 	for who in [rabbit, halil]:
 		body(who).position.y = sin(t * BOB_SPEED) * BOB
+	halil_throw = move_toward(halil_throw, 0.0, delta * 2.5)
+	apply_pose(halil, "halil", t, 0.0, halil_throw)
+	apply_pose(rabbit, "rabbit", t, 0.0, 1.0 if ry > 0.0 else 0.0)
 	run_items(delta, p, r, t)
 	run_throws(delta, p, r, spd)
 	if gap <= 0.0 or dist >= GOAL:
@@ -1329,9 +1415,18 @@ func run_items(delta: float, p: Vector3, r: Vector3, t: float) -> void:
 		elif it.kind == "roll":
 			n.position.z += ROLL_SPEED * delta
 			n.rotation.x += ROLL_SPEED / 0.28 * delta
+		if it.has("anim") and absf(n.position.z - p.z) < ANIM_DIST:
+			var al := 0.0
+			if it.anim == "chicken":  # yaklaşınca ürkür, kanat çırpar
+				al = clampf(1.0 - Vector2(n.position.x - p.x, n.position.z - p.z).length() / 4.0, 0.0, 1.0)
+			else:
+				it.honk = maxf(it.honk - delta * 0.8, 0.0)
+				al = it.honk
+			apply_pose(n, it.anim, t, it.phase, al)
 		if it.kind == "goose" and absf(n.position.z - p.z) < 1.0 and absi(lane - it.lane) <= 1:
 			it.kind = "deco"  # her kaz bir kez öter
 			throw_timer = minf(throw_timer, 0.3)
+			it.honk = 1.0
 			say("Vak vak! Halil duydu")
 			play("goose")
 		if it.kind == "slick" and hits(r, n.position.x, n.position.z, it.h):
@@ -1354,7 +1449,7 @@ func run_items(delta: float, p: Vector3, r: Vector3, t: float) -> void:
 				tw.tween_callback(n.queue_free)
 				continue
 			if not passed:
-				hurt("Tökezledin! Halil yaklaşıyor")
+				hurt("Tökezledin! Halil yaklaşıyor", it.get("snd", ""))
 			n.queue_free()
 
 
@@ -1376,6 +1471,7 @@ func run_throws(delta: float, p: Vector3, r: Vector3, spd: float) -> void:
 				from = obj.position, to = to, t = -delta / 2.0, item = what[0], lane = lane, spd = spd})  # bu karede de ilerler: yarım kare geriden başla ki her FPS'te tam 1 sn sonra insin
 		say("Halil %s fırlattı!" % what[0])
 		play("throw")
+		halil_throw = 1.0
 	for i in range(throws.size() - 1, -1, -1):
 		var th: Dictionary = throws[i]
 		th.t += delta
@@ -1385,12 +1481,12 @@ func run_throws(delta: float, p: Vector3, r: Vector3, spd: float) -> void:
 		th.node.position = pos
 		if k >= 1.0:
 			if hits(r, th.to.x, th.to.z, THROW_H):
-				hurt("Vuruldun!")
+				hurt("Vuruldun!", th.item)
 				if th.item == "kova":
 					blind_t = BLIND_TIME
 					say("Kova kafana geçti!")
 			elif th.item == "tırmık":  # sadece ıskalanınca saplanır; isabette tavşanın altına düşüp ikinci kez çarptırırdı
-				items.append({node = model(M.RAKE_STUCK, th.to), kind = "hit", h = 0.6})
+				items.append({node = model(M.RAKE_STUCK, th.to), kind = "hit", h = 0.6, snd = "tırmık"})
 			else:
 				if near_miss(lane_left, clock - lane_left_t, th.lane, hits(Vector3(r.x, 0, r.z), th.to.x, th.to.z, THROW_H), near_win):
 					gap = minf(gap + NEAR_BONUS, GAP_MAX)
@@ -1638,9 +1734,10 @@ func feast_finish() -> void:
 # Ses: üretim ses.gd'de. Ekransızda ses sürücüsü sahte (çıkışta sızıntı uyarısı verir): hiç kurulmaz, play() sessiz geçer.
 # Oynatıcılar sabit: POOL efekt (sırayla) + 1 müzik. Tarayıcı sesi ilk dokunuştan sonra açar (Godot kendisi yönetir).
 func make_audio() -> void:
-	if DisplayServer.get_name() == "headless":
+	if DisplayServer.get_name() == "headless" and not force_audio:
 		return
-	snd_bank = Ses.make_all()
+	snd_bank = Ses.make_all().duplicate()
+	snd_bank.merge(Ses.load_files(), true)  # dosyadan yüklenenler üretilmişlerin yerini alır
 	for i in POOL:
 		var p := AudioStreamPlayer.new()
 		p.volume_db = -8.0
@@ -1654,8 +1751,21 @@ func make_audio() -> void:
 		music.play()
 
 
+# Çıkışta oynatıcı akışlarını ve ses önbelleğini bırak ("ObjectDB instances leaked" uyarısı olmasın).
+func release_audio() -> void:
+	for pl in snd_pool:
+		pl.stop()
+		pl.stream = null
+	if music:
+		music.stop()
+		music.stream = null
+	snd_bank = {}
+	Ses.bank = {}
+
+
 func play(snd: String) -> void:
-	if snd_on and not snd_pool.is_empty():
+	if snd_on and not snd_pool.is_empty() and snd_bank.has(snd):
+		snd_pool[snd_next].volume_db = -8.0 + (HIT_TRIM if snd.begins_with("hit_") else 0.0)
 		snd_pool[snd_next].stream = snd_bank[snd]
 		snd_pool[snd_next].play()
 		snd_next = (snd_next + 1) % POOL

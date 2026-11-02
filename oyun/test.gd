@@ -5,6 +5,9 @@ const Main = preload("res://main.gd")
 const Secim = preload("res://secim.gd")
 const Mod = preload("res://modeller.gd")
 const Ses = preload("res://ses.gd")
+const Dolap = preload("res://dolap.gd")
+const CAT := {sapka = {kime = "tavsan", yuva = "kafa", fiyat = 25}, tac = {kime = "tavsan", yuva = "kafa", fiyat = 40},
+		fular = {kime = "tavsan", yuva = "boyun", fiyat = 60}, kovboy = {kime = "halil", yuva = "kafa", fiyat = 25}}
 
 
 func _init() -> void:
@@ -49,6 +52,25 @@ func _init() -> void:
 		[[Main.shake_amount(Main.SHAKE_TIME, true), Main.shake_amount(0.0, true), Main.shake_amount(Main.SHAKE_TIME, false), Main.shake_amount(-1.0, true)], [Main.SHAKE_AMP, 0.0, 0.0, 0.0], "sarsıntı: süreyle söner, kapalıyken sıfır"],
 		[[Main.gap_text(0.1).contains("YAKIN!"), Main.gap_text(0.5).contains("YAKIN!"), Main.gap_text(0.5) != Main.gap_text(0.9)], [true, false, true], "Halil çubuğu yazısı renksiz de okunur"],
 		[Main.SHAKE_TIME <= 0.25 and Main.FLASH_TIME <= 0.2 and Main.HITSTOP <= 0.06, true, "vurulma efektleri süre sınırlarında"],
+		[[Dolap.wallet_after(5, 7), Dolap.wallet_after(0, -9), Dolap.wallet_after(-3, 0), Dolap.earned(4, true), Dolap.earned(4, false)], [12, 0, 0, 14, 4], "cüzdan eksiye düşmez, yuva +10"],
+		[[Dolap.can_buy(Dolap.empty_state(24), "sapka", CAT), Dolap.buy(Dolap.empty_state(24), "sapka", CAT).havuc], [false, 24], "para yetmiyorsa alınmaz"],
+		[Dolap.buy(Dolap.buy(Dolap.empty_state(100), "sapka", CAT), "sapka", CAT).havuc, 75, "aynı ürün iki kez alınmaz"],
+		[Dolap.can_buy(Dolap.empty_state(100), "yok", CAT), false, "bilinmeyen ürün alınmaz"],
+		[dolap_slot(), ["tac", "kovboy", ""], "yuvada tek kıyafet; çıkar çalışır; alınmamış giyilmez"],
+		[Dolap.clean_dolap(-5, ["sapka", "yok", 3, "sapka"], {tavsan = {kafa = "kovboy", boyun = "fular"}, halil = "x"}, CAT),
+				{havuc = 0, alinan = ["sapka"], giyili = {tavsan = {}, halil = {}}}, "bozuk dolap kaydı temizlenir"],
+		[Dolap.clean_dolap("x", null, {}, CAT).havuc, Dolap.START_GIFT, "kayıt yoksa ilk hediye"],
+		[Mod.OUTFITS.keys().filter(func(id): var o: Dictionary = Mod.OUTFITS[id]; return not (o.get("kime") in Dolap.WHO and o.get("fiyat") is int and o.fiyat > 0 and o.get("yuva") is String and o.get("parts") is Array)), [],
+				"kıyafet verisi dolap sözleşmesine uyuyor (kime, fiyat > 0, yuva, parts)"],
+		[Mod.OUTFITS.keys().all(func(id): return Dolap.equip(Dolap.buy(Dolap.empty_state(1000), id, Mod.OUTFITS), id, Mod.OUTFITS).giyili[Mod.OUTFITS[id].kime].get(Mod.OUTFITS[id].yuva) == id), true,
+				"her gerçek kıyafet alınıp giyilebiliyor"],
+		[dolap_kayit(), true, "dolap kaydı gidip gelir, koşu kazancı cüzdana eklenir (test dosyası)"],
+		[Main.HIT_SND.keys().map(func(k): return Main.hit_snd(k)), Main.HIT_SND.values(), "engel türü ses anahtarına eşlenir"],
+		[[Main.hit_snd(""), Main.hit_snd("bilinmez")], ["bonk", "bonk"], "bilinmeyen engel türü eski çarpma sesini çalar"],
+		[Main.HIT_SND.values().all(func(k): return Ses.make_all().has(k)) and Main.HIT_SND.values().size() == Main.HIT_SND.values().filter(func(k): return k != "bonk").size(), true, "her çarpma sesinin üretilmiş yedeği var"],
+		[Ses.FILES.keys().all(func(k): return Main.HIT_SND.values().has(k)), true, "dosya anahtarları çarpma anahtarlarından"],
+		[rigs_ok(), true, "iskelet grupları: indeksler geçerli ve tekil, varlık başına <= 6 mesh, poz anahtarları eklem"],
+		[pose_bounded(), true, "poz açıları sınırlı (|açı| <= ANIM_MAX), değerler sonlu"],
 	]
 	var failed := 0
 	for c in cases:
@@ -57,6 +79,29 @@ func _init() -> void:
 			print("HATA: ", c[2])
 	print("ok" if failed == 0 else "%d test başarısız" % failed)
 	quit(failed)
+
+
+func dolap_slot() -> Array:
+	var st := Dolap.buy(Dolap.buy(Dolap.empty_state(200), "sapka", CAT), "tac", CAT)
+	st = Dolap.equip(Dolap.equip(st, "sapka", CAT), "tac", CAT)
+	var halil := Dolap.equip(Dolap.buy(st, "kovboy", CAT), "kovboy", CAT)
+	var off := Dolap.unequip(halil, "tac", CAT)
+	return [halil.giyili.tavsan.kafa, halil.giyili.halil.kafa, off.giyili.tavsan.get("kafa", "") + Dolap.equip(off, "fular", CAT).giyili.tavsan.get("boyun", "")]
+
+
+func dolap_kayit() -> bool:  # kullanıcının ayar.cfg'si değil, geçici dosya
+	var real := Secim.ayar_path
+	Secim.ayar_path = "user://test_dolap.cfg"
+	DirAccess.remove_absolute(Secim.ayar_path)
+	var gift: int = Dolap.load_state(CAT).havuc
+	var st := Dolap.equip(Dolap.buy(Dolap.empty_state(50), "sapka", CAT), "sapka", CAT)
+	Dolap.save_state(st)
+	var back := Dolap.load_state(CAT)
+	var after := Dolap.bank_run(3, true)
+	var ok: bool = gift == Dolap.START_GIFT and back == st and after == 50 - 25 + 13 and Dolap.load_state(CAT).alinan == ["sapka"]
+	DirAccess.remove_absolute(Secim.ayar_path)
+	Secim.ayar_path = real
+	return ok
 
 
 func scores(n: int) -> Array:  # puanları 50, 40, 30, ... olan sıralı tablo
@@ -68,3 +113,32 @@ func skin_ok() -> bool:
 	var out := Secim.skin_parts(Mod.RABBIT, s)
 	return out.size() == Mod.RABBIT.size() and out[0][1] == Color.RED and out[0][2] == Mod.RABBIT[0][2] \
 			and not out.any(func(p): return p[1] == Mod.FUR) and Mod.RABBIT[0][1] == Mod.FUR  # kaynak dizi bozulmadı
+
+
+func rigs_ok() -> bool:
+	var rigs := {halil = [Mod.RIG_HALIL, Mod.HALIL], dog = [Mod.RIG_DOG, Mod.DOG], chicken = [Mod.RIG_CHICKEN, Mod.CHICKEN], goose = [Mod.RIG_GOOSE, Mod.GOOSE], rabbit = [Mod.RIG_RABBIT, Mod.RABBIT]}
+	for k in rigs:
+		var rig: Dictionary = rigs[k][0]
+		var seen := []
+		for g in rig:
+			for i in rig[g][1]:
+				if i < 0 or i >= rigs[k][1].size() or i in seen:
+					return false
+				seen.append(i)
+		if rig.size() + 1 > 6:
+			return false
+		var pose := Main.anim_pose(k, 1.0, 0.0, 0.5)
+		for g in pose:
+			if g != "body" and not rig.has(g):
+				return false
+	return true
+
+
+func pose_bounded() -> bool:
+	for k in ["halil", "dog", "chicken", "goose", "rabbit"]:
+		for i in 60:
+			for a in [0.0, 0.5, 1.0]:
+				for v in Main.anim_pose(k, i * 0.37, i * 0.1, a).values():
+					if not (is_finite(v.x) and is_finite(v.y) and is_finite(v.z)) or maxf(absf(v.x), maxf(absf(v.y), absf(v.z))) > Main.ANIM_MAX:
+						return false
+	return true

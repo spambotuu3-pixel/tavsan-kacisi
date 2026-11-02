@@ -8,6 +8,12 @@ const PEAK_MAX := 0.8  # test: hiçbir ses bunu aşmasın
 
 static var bank := {}
 
+# Çarpma sesi dosyaları (CC0, ses/LISANSLAR.md). Anahtar -> yol; eksik ya da bozuksa üretilmiş yedek kalır.
+const FILES := {
+	hit_fence = "res://ses/cit.ogg", hit_barrel = "res://ses/varil.ogg", hit_bucket = "res://ses/kova.ogg", hit_dog = "res://ses/kopek.ogg",
+	hit_egg = "res://ses/yumurta.ogg", hit_cabbage = "res://ses/lahana.ogg", hit_rake = "res://ses/tirmik.ogg",
+}
+
 
 # Ayar dosyasından gelen değer bool değilse varsayılan (açık).
 static func parse_on(v: Variant) -> bool:
@@ -127,6 +133,17 @@ static func music() -> AudioStreamWAV:
 	return wav
 
 
+# Dosya seslerini yükler; olmayan ya da yüklenemeyen sessizce atlanır (yedek: make_all).
+static func load_files(files := FILES) -> Dictionary:
+	var out := {}
+	for k in files:
+		if ResourceLoader.exists(files[k]):
+			var st = load(files[k])
+			if st is AudioStream and st.get_length() > 0.02:
+				out[k] = st
+	return out
+
+
 # Tüm efektler + müzik; ilk çağrıda üretilir.
 static func make_all() -> Dictionary:
 	if not bank.is_empty():
@@ -147,6 +164,15 @@ static func make_all() -> Dictionary:
 	b.hey = to_wav(note(330, 520, 0.24, 5, 4, 0.1), RATE, 0.6)
 	b.crunch0 = to_wav(crunch(0), RATE, 0.6)
 	b.crunch1 = to_wav(crunch(1), RATE, 0.6)
+	# Çarpma seslerinin üretilmiş yedekleri (dosya yoksa bunlar çalar; tavuk her zaman bu)
+	b.hit_fence = to_wav(note(320, 140, 0.12, 32, 3, 0.4), RATE, 0.5)
+	b.hit_barrel = to_wav(note(130, 60, 0.2, 18, 2, 0.2), RATE, 0.55)
+	b.hit_chicken = to_wav(seq([note(520, 760, 0.06, 20, 3, 0.1), note(480, 700, 0.06, 20, 3, 0.1), note(430, 620, 0.1, 14, 3, 0.1)]), RATE, 0.5)
+	b.hit_dog = to_wav(note(300, 150, 0.13, 22, 4, 0.3), RATE, 0.55)
+	b.hit_bucket = to_wav(seq([note(900, 860, 0.1, 18, 3, 0.1), note(1320, 1280, 0.12, 22, 3, 0.1)]), RATE, 0.45)
+	b.hit_egg = to_wav(whoosh(0.1, 0.5), RATE, 0.5)
+	b.hit_cabbage = to_wav(note(120, 60, 0.1, 30, 1, 0.2), RATE, 0.55)
+	b.hit_rake = to_wav(note(1400, 1300, 0.08, 40, 2), RATE, 0.4)
 	b.music = music()
 	bank = b
 	return b
