@@ -123,3 +123,11 @@ Kaynak: `PLAN-mekanikler.md` bölüm 1 (2026-11-02 eleştirisi).
 - Efektler: zıplama, iniş, havuç, çarpma (bonk), atılım, Halil'in fırlatması, kıl payı, Karabaş havlaması, kaz, kazanma, yakalanma, menü tık, "HEY!", yuva kıtırı. Müzik: 8 sn döngülü, sakin C pentatonik melodi + bas, efektlerin altında (-22 dB).
 - Ses düğmesi: menüde sağ altta, oyunda sağ üstte ("Ses: Açık/Kapalı", 150x60); oyunda M tuşu (menüde M isim kutusuna yazıldığı için yalnız düğme). Seçim `ayar.cfg [ayar] ses` (varsayılan açık).
 - Ekransızda (kalite kapısı) ses kurulmaz; ayar mantığı yine çalışır.
+
+## Kamera, vurulma ve ayarlar (PLAN-sonraki-tur A1/A2)
+
+- **Kamera:** koşuda tavşana 7 m arkada, 3,6 m yüksekte, görüş açısı 65° (`CAM_*` sabitleri, `main.gd` başı). Tavşan ekran yüksekliğinin %6,6'sından %13,5'ine çıktı. Açılış kamerası eskisi gibi; koşuya geçerken 0,8 sn'de kayar. Halil tavşanın yanında (`HALIL_SIDE`) koşar: uzaktayken (mesafe çubuğu dolu) kadraj dışında, yaklaştıkça alttan girer. Halil'in fırlattığı eşya kamera yanından değil tavşanın en çok 3 m arkasından görünür.
+- **Vurulma:** kısa kamera sarsıntısı (0,25 sn), kırmızı kenar flaşı (0,2 sn), 0,05 sn duraksama, mesaj ortada büyük yazıyla. Hepsi `SHAKE_*`, `FLASH_*`, `HITSTOP` sabitlerinde.
+- **Renk körlüğü:** Halil çubuğu "güvenli / dikkat ▲ / YAKIN! ▲▲▲" yazar, yakınken kalın koyu kenar çizer. Atış hedef diski kırmızı disk + beyaz X.
+- **Duraksat:** P / Esc / gamepad Start, HUD'da II düğmesi, sekme gizlenince ya da odak kaybında otomatik (Esc bitişte hâlâ menüye döner). Devam: dokun ya da tuş.
+- **Ayar paneli** (menüde sol üstteki "Ayarlar", duraklatmadan "Ayarlar"): ses, titreşim, sarsıntı, yavaş mod. `ayar.cfg [ayar]`: `ses`, `titresim`, `sarsinti`, `yavas`. Yavaş mod yalnız koşu hızını %85'e çarpar; çarpışma, çit 0,6 / varil 1,6, puan formülü aynı, puan tablosuna yine yazılır.

@@ -44,6 +44,11 @@ func _init() -> void:
 		[[Ses.parse_on(true), Ses.parse_on(false), Ses.parse_on("x"), Ses.parse_on(null), Ses.parse_on(0)], [true, false, true, true, true], "ses ayarı: yalnız bool geçerli, değilse açık"],
 		[Ses.make_all().keys().filter(func(k): return Ses.check(Ses.make_all()[k]) != ""), [], "tüm sesler: süre, tepe <= 0,8, kırpma ve sessizlik yok"],
 		[Ses.make_all().music.loop_mode == AudioStreamWAV.LOOP_FORWARD and Ses.make_all().music.loop_end == Ses.make_all().music.data.size() / 2, true, "müzik döngülü, döngü sonu örnek sayısı"],
+		[[Main.flag(true, false), Main.flag(false, true), Main.flag("x", true), Main.flag(null, false), Main.flag(1, false)], [true, false, true, false, false], "ayar bayrağı: yalnız bool geçerli, değilse varsayılan"],
+		[[Main.speed_mult(false), Main.speed_mult(true)], [1.0, 0.85], "yavaş mod yalnız hız çarpanı (%85)"],
+		[[Main.shake_amount(Main.SHAKE_TIME, true), Main.shake_amount(0.0, true), Main.shake_amount(Main.SHAKE_TIME, false), Main.shake_amount(-1.0, true)], [Main.SHAKE_AMP, 0.0, 0.0, 0.0], "sarsıntı: süreyle söner, kapalıyken sıfır"],
+		[[Main.gap_text(0.1).contains("YAKIN!"), Main.gap_text(0.5).contains("YAKIN!"), Main.gap_text(0.5) != Main.gap_text(0.9)], [true, false, true], "Halil çubuğu yazısı renksiz de okunur"],
+		[Main.SHAKE_TIME <= 0.25 and Main.FLASH_TIME <= 0.2 and Main.HITSTOP <= 0.06, true, "vurulma efektleri süre sınırlarında"],
 	]
 	var failed := 0
 	for c in cases:

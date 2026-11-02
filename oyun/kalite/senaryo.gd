@@ -27,7 +27,7 @@ func _initialize() -> void:
 		end_frame = SOFRA_END_FRAME
 	match ad:  # senaryo kendi koşulunu kurar, dışarıdaki betiğe güvenmez
 		"bozuk_cfg": write_cfg("[secim\nskin = = ][[[ çöp")
-		"skor_bos": write_cfg("")
+		"skor_bos", "ayar_paneli": write_cfg("")  # ayar_paneli ayarları değiştirir: temiz başlar, sonunda temizler
 		"skor_dolu": write_cfg('[skor]\nliste=[%s]\n' % ", ".join(range(5).map(func(i): return '{"isim": "K%d", "puan": %d}' % [i, 900 - i * 10])))
 	change_scene_to_file("res://main.tscn")
 
@@ -59,6 +59,10 @@ func _process(_d: float) -> bool:
 		key(KEY_ENTER, true)
 	if ad == "ses":
 		ses_test(m)
+	if ad == "duraklat":
+		duraklat_test(m)
+	if ad == "ayar_paneli":
+		ayar_test(m)
 	if f == 32:
 		key(KEY_ENTER, false)
 	if f == 60 and ad != "menu":
@@ -82,7 +86,7 @@ func _process(_d: float) -> bool:
 			m.rabbit.position.z = -190.0
 			m.prev_dist = 190.0
 			m.next_row_z = -200.0
-		m.rabbit.position.z -= 0.4  # oyunun hızına ek ~24 m/s
+		m.rabbit.position.z -= 0.45  # oyunun hızına ek ~27 m/s (vurulma duraksamaları koşuyu kısalttığı için 0,4 değil)
 		m.gap = m.GAP_MAX           # yakalanmasın
 		saw_dog = saw_dog or not m.dog.is_empty()
 		saw_goose = saw_goose or m.items.any(func(it): return it.kind == "goose")
@@ -179,6 +183,82 @@ func ses_test(m) -> void:
 				fail("M tuşu sesi açmadı")
 
 
+# Duraksat: odak kaybı donurur, P devam ettirir, Esc/P değişir; donukken konum ve saat değişmez.
+func duraklat_test(m) -> void:
+	if f < 120:
+		return
+	match f:
+		125: m.set_meta("z0", m.rabbit.position.z)
+		126: m.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+		128:
+			if not m.paused or not m.pause_box.visible:
+				fail("odak kaybı oyunu duraklatmadı (durum %s)" % m.state)
+			m.set_meta("z1", m.rabbit.position.z)
+			m.set_meta("c1", m.clock)
+		160:
+			if m.rabbit.position.z != m.get_meta("z1") or m.clock != m.get_meta("c1"):
+				fail("duraklatılmışken oyun ilerledi")
+			key(KEY_P, true)
+		162: key(KEY_P, false)
+		164:
+			if m.paused or m.pause_box.visible:
+				fail("P devam ettirmedi")
+		200:
+			if m.rabbit.position.z >= m.get_meta("z1") - 1.0:
+				fail("devam edince koşu sürmedi")
+			key(KEY_ESCAPE, true)
+		202: key(KEY_ESCAPE, false)
+		210:
+			if not m.paused:
+				fail("Esc koşuda duraklatmadı")
+			m.open_settings()
+		212:
+			key(KEY_ESCAPE, true)  # ayar panelini kapatır, duraklatma sürer
+		214:
+			key(KEY_ESCAPE, false)
+			if not m.paused or m.set_open:
+				fail("Esc ayar panelini kapatmadı ya da oyunu sürdürdü")
+		230: key(KEY_ENTER, true)  # herhangi tuş devam ettirir
+		232:
+			key(KEY_ENTER, false)
+			if m.paused:
+				fail("tuş devam ettirmedi")
+			m.gap = m.GAP_MAX
+
+
+# Ayar paneli: menüde açılır, anahtarlar ayar.cfg'ye yazılır, oyun başlayınca kapanır; sarsıntı kapalıyken sarsmaz, yavaş mod hızı çarpar.
+func ayar_test(m) -> void:
+	match f:
+		12: m.set_btn.pressed.emit()
+		14:
+			if not m.set_panel.visible or m.set_btn.custom_minimum_size.y < 56.0 or m.set_btns.yavas.custom_minimum_size.y < 56.0:
+				fail("ayar paneli açılmadı ya da düğmeler küçük")
+			for k in ["titresim", "sarsinti", "yavas"]:
+				m.set_btns[k].pressed.emit()
+		16:
+			var cf := Secim.config()
+			if cf.get_value("ayar", "titresim", true) != false or cf.get_value("ayar", "sarsinti", true) != false or cf.get_value("ayar", "yavas", false) != true:
+				fail("ayarlar ayar.cfg'ye yazılmadı")
+			if m.speed_mult(m.slow_on) != 0.85:
+				fail("yavaş mod hız çarpanı 0,85 değil")
+		124:
+			m.gap = m.GAP_MAX
+			if m.pause_box.visible or m.state != "run":
+				fail("oyun başlayınca ayar paneli kapanmadı (durum %s)" % m.state)
+			m.hurt("deneme")
+		125:
+			if m.shake_t > 0.0 or m.hitstop_t <= 0.0 or m.flash.modulate.a <= 0.0:
+				fail("sarsıntı kapalıyken sarsmamalı, duraksama ve flaş olmalı (sarsıntı %.2f)" % m.shake_t)
+			m.set_btns.sarsinti.pressed.emit()
+		140:
+			m.gap = m.GAP_MAX
+			m.hurt("deneme")
+		141:
+			if m.shake_t <= 0.0:
+				fail("sarsıntı açıkken sarsmadı")
+		150: write_cfg("")  # yavaş mod / titreşim kapalı kalmasın: sonraki senaryolar etkilenmesin
+
+
 func click(at: Vector2) -> void:
 	for down in [true, false]:
 		var e := InputEventMouseButton.new()
@@ -198,7 +278,7 @@ func key(k: Key, down: bool) -> void:
 
 
 func check(m) -> bool:
-	var want := {menu = "menu", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
+	var want := {menu = "menu", duraklat = "run", ayar_paneli = "run", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
 			isim_bos = "run", isim_uzun = "run", isim_turkce = "run", bolgeler = "run", fare_bos = "run", bozuk_cfg = "over", skor_bos = "over", skor_dolu = "over"}
 	if not want.has(ad):
 		return fail("bilinmeyen senaryo")

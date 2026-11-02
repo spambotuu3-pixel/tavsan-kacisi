@@ -57,6 +57,26 @@ const FEAST_BITES := 3      # bir yığın kaç ısırıkta biter
 const FEAST_END_WAIT := 0.5 # "Mmm!" süresi (FEAST_MAX içinde)
 const FEAST_BG := Color(0.3, 0.2, 0.14)  # odanın dışı: koyu toprak (gökyüzü görünmesin)
 const SND_BTN := Vector2(150, 60)  # ses düğmesi (parmak hedefi >= 56 px)
+const PAUSE_BTN := Vector2(64, 60)  # duraklat düğmesi, ses düğmesinin solunda (aynı üst sağ köşe bandı: dokunma bölgeleri aynı kalır)
+
+# Kamera (PLAN-sonraki-tur A1): koşuda tavşana yakın ve alçak; açılış kamerası eski değerlerde kalır, koşuya geçerken yumuşakça kayar.
+const CAM_BACK := 7.0                    # kamera tavşanın bu kadar arkasında (m)
+const CAM_HEIGHT := 3.6                  # yerden yükseklik (m)
+const CAM_LOOK := Vector3(0, 0.6, -9.0)  # bakılan nokta, tavşana göre
+const CAM_FOV := 65.0
+const CAM_INTRO_POS := Vector3(0, 6, 11)   # açılış: eski kamera (Halil kadrajda, tavşan yolun yanında)
+const CAM_INTRO_LOOK := Vector3(0, 0, -8)
+const THROW_FROM_Z := 3.0                # atış görsel olarak en çok tavşanın bu kadar arkasından başlar
+const HALIL_SIDE := 1.7                  # Halil tavşanın yanında koşar: yaklaşınca tavşanı örtmesin
+const CAM_BLEND := 0.8                   # açılıştan koşu kamerasına geçiş (sn)
+# Vurulma geri bildirimi
+const SHAKE_TIME := 0.25   # kamera sarsıntısı süresi (sn)
+const SHAKE_AMP := 0.16    # en büyük sapma (m)
+const FLASH_TIME := 0.2    # kırmızı kenar flaşı (sn)
+const FLASH_ALPHA := 0.5
+const HITSTOP := 0.05      # vurulunca oyun bu kadar donar (sn)
+const SLOW_MULT := 0.85    # yavaş mod: yalnız koşu hızı çarpanı
+const RESUME_GUARD := 6    # kare; devam eden dokunma/tuş oyuna eylem olarak geçmesin (ms)
 const POOL := 6  # eşzamanlı efekt oynatıcı sayısı (sabit)
 
 static var go_menu := true  # sahne yenilense de korunur: bitişte Enter menüyü atlar, Esc menüye döner
@@ -182,6 +202,22 @@ var feast_fade: ColorRect
 var skip_btn: Button
 var snd_on := true     # ayar.cfg [ayar] ses
 var snd_btn: Button
+var shake_on := true   # ayar.cfg [ayar] sarsinti
+var slow_on := false   # ayar.cfg [ayar] yavas
+var shake_t := 0.0
+var hitstop_t := 0.0
+var cam_mix := 0.0     # 0 açılış kamerası, 1 koşu kamerası
+var flash: TextureRect
+var paused := false
+var set_open := false
+var pause_btn: Button
+var set_btn: Button
+var pause_box: Control
+var pause_panel: Control
+var set_panel: Control
+var set_btns := {}     # ad -> Button
+var ignore_until := 0  # kare sayısı
+var vis_cb  # JavaScriptObject; web: sekme gizlenince duraksat
 var snd_bank := {}      # ad -> AudioStreamWAV (ekransızda boş)
 var snd_pool: Array[AudioStreamPlayer] = []
 var snd_next := 0
@@ -192,6 +228,7 @@ var hud: Label
 var dist_bar: ProgressBar
 var gap_bar: ProgressBar
 var gap_fill: StyleBoxFlat
+var gap_label: Label
 var msg_label: Label
 var end_box: CenterContainer
 var end_label: Label
@@ -203,6 +240,21 @@ const HUD_BAR_BG := Color(0.33, 0.22, 0.14, 0.15)
 const HUD_SAFE := Color(0.45, 0.72, 0.3)
 const HUD_DANGER := Color(0.87, 0.3, 0.25)
 const HUD_WARN := Color(0.96, 0.75, 0.25)
+
+
+# ayar.cfg değeri bool değilse varsayılana düşer.
+static func flag(v: Variant, def: bool) -> bool:
+	return v if v is bool else def
+
+
+# Yavaş modda yalnız koşu hızı çarpılır; çarpışma, puan ve sabitler aynı.
+static func speed_mult(slow: bool) -> float:
+	return SLOW_MULT if slow else 1.0
+
+
+# Kamera sapması: sarsıntı süresi azaldıkça küçülür; kapalıysa ya da süre bittiyse sıfır.
+static func shake_amount(left: float, on: bool) -> float:
+	return SHAKE_AMP * clampf(left / SHAKE_TIME, 0.0, 1.0) if on else 0.0
 
 
 # Tavşan (ayak noktası r) bir şeye çarptı mı? h: engelin yüksekliği, üstünden atlanabilir.
@@ -393,8 +445,9 @@ func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
 # Telefon ayarları (ayar.cfg [ayar] bölümü: titresim = true/false, ses = true/false, fps = 30/60). Okuma hatası varsayılana düşer.
 func load_settings() -> void:
 	var cf := Secim.config()
-	var v = cf.get_value("ayar", "titresim", true)
-	vibrate_on = v if v is bool else true
+	vibrate_on = flag(cf.get_value("ayar", "titresim", true), true)
+	shake_on = flag(cf.get_value("ayar", "sarsinti", true), true)
+	slow_on = flag(cf.get_value("ayar", "yavas", false), false)
 	snd_on = Ses.parse_on(cf.get_value("ayar", "ses", true))
 	var fps = cf.get_value("ayar", "fps", 0)
 	if fps is int and fps in [30, 60]:
@@ -474,6 +527,9 @@ func _ready() -> void:
 
 	make_hud()
 	make_audio()
+	if OS.has_feature("web"):  # sekme gizlenince duraksat (odak bildirimi tarayıcıda her zaman gelmeyebilir)
+		vis_cb = JavaScriptBridge.create_callback(func(_a): if JavaScriptBridge.eval("document.hidden"): pause_game())
+		JavaScriptBridge.get_interface("document").addEventListener("visibilitychange", vis_cb)
 
 	model(M.FENCE, Vector3(-3.4, 0.3, 0.6)).rotation.y = 0.5  # başlangıç süsü (menü + açılış): yol kenarında çit ve havuç yığını
 	model(M.BURROW.slice(2), Vector3(-0.9, 0, -1.5))
@@ -519,6 +575,7 @@ func make_world() -> void:
 # HUD, bitiş paneli, kova karartması ve ortadaki yazı.
 func make_hud() -> void:
 	var layer := CanvasLayer.new()
+	layer.layer = 2  # menü (katman 1) ve ayar paneli üst üste gelince panel üstte kalsın
 	add_child(layer)
 	hud_panel = PanelContainer.new()
 	hud_panel.position = Vector2(16, 16)
@@ -541,9 +598,10 @@ func make_hud() -> void:
 	dash_hint.text = "  ↓ ATIL"
 	dash_hint.add_theme_color_override("font_color", HUD_DANGER)
 	dist_bar = hud_bar(col, M.CARROT_C)
-	hud_label(col, 18).text = "Halil'e uzaklık"
+	gap_label = hud_label(col, 18)
 	gap_bar = hud_bar(col, HUD_SAFE)
 	gap_fill = gap_bar.get_theme_stylebox("fill")
+	gap_fill.border_color = HUD_TEXT
 	msg_label = hud_label(col, 20)
 	end_box = CenterContainer.new()
 	end_box.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -570,6 +628,7 @@ func make_hud() -> void:
 	pop_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	pop_label.offset_top = 170
 	pop_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pop_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # uzun mesaj dar telefon ekranında taşmasın
 	pop_label.add_theme_font_size_override("font_size", 56)
 	pop_label.add_theme_color_override("font_outline_color", HUD_TEXT)
 	pop_label.add_theme_constant_override("outline_size", 12)
@@ -623,10 +682,171 @@ func make_hud() -> void:
 	snd_btn.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	snd_btn.pressed.connect(toggle_snd)
 	layer.add_child(snd_btn)
+	make_pause_ui(layer)
 	snd_label()
 	hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE  # HUD dokunmayı yutmasın: telefonda sol üst bölge de oyuna gitsin
 	for c in hud_panel.find_children("*", "Control", true, false):
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		pause_game()  # telefonda uygulama arka plana gidince / masaüstünde pencere odağı kaybolunca
+
+
+func pause_game() -> void:
+	if paused or not (state == "intro" or state == "run"):
+		return
+	paused = true
+	set_open = false
+	pause_box.visible = true
+	pause_panel.visible = true
+	set_panel.visible = false
+	if music:
+		music.stream_paused = true
+
+
+func resume_game() -> void:
+	if not paused:
+		return
+	paused = false
+	set_open = false
+	pause_box.visible = false
+	ignore_until = Engine.get_process_frames() + RESUME_GUARD  # devam ettiren dokunuş/tuş oyuna eylem olarak geçmesin
+	if music:
+		music.stream_paused = false
+
+
+func open_settings() -> void:
+	set_open = true
+	pause_box.visible = true
+	pause_panel.visible = false
+	set_panel.visible = true
+
+
+func close_settings() -> void:
+	set_open = false
+	set_panel.visible = false
+	pause_panel.visible = paused
+	pause_box.visible = paused
+
+
+func close_panels() -> void:  # oyun başlarken menüden açık kalan ayar paneli
+	paused = false
+	set_open = false
+	pause_box.visible = false
+
+
+func toggle_setting(key: String) -> void:
+	match key:
+		"ses": toggle_snd()
+		"titresim":
+			vibrate_on = not vibrate_on
+			Secim.save("ayar", {titresim = vibrate_on})
+		"sarsinti":
+			shake_on = not shake_on
+			Secim.save("ayar", {sarsinti = shake_on})
+		"yavas":
+			slow_on = not slow_on
+			Secim.save("ayar", {yavas = slow_on})
+	set_labels()
+	play("click")
+
+
+func set_labels() -> void:
+	snd_label()
+	var on := {ses = snd_on, titresim = vibrate_on, sarsinti = shake_on, yavas = slow_on}
+	var names := {ses = "Ses", titresim = "Titreşim", sarsinti = "Sarsıntı", yavas = "Yavaş mod"}
+	for k in set_btns:
+		set_btns[k].text = "%s: %s" % [names[k], "Açık" if on[k] else "Kapalı"]
+
+
+func ui_button(text: String, size: Vector2, on_press: Callable, font := 24) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.theme = ui_theme()
+	b.add_theme_font_size_override("font_size", font)
+	b.focus_mode = Control.FOCUS_NONE
+	b.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
+	b.custom_minimum_size = size
+	b.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	b.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	b.pressed.connect(on_press)
+	return b
+
+
+# Vurulma flaşı, duraklat düğmesi, duraklat ekranı ve ayar paneli.
+func make_pause_ui(layer: CanvasLayer) -> void:
+	var g := Gradient.new()  # kenarlara doğru koyulaşan kırmızı, orta saydam
+	g.offsets = PackedFloat32Array([0.7, 1.0])
+	g.colors = PackedColorArray([Color(0.9, 0.1, 0.1, 0.0), Color(0.9, 0.1, 0.1, FLASH_ALPHA)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 0.5)
+	gt.width = 64
+	gt.height = 64
+	flash = TextureRect.new()
+	flash.texture = gt
+	flash.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	flash.stretch_mode = TextureRect.STRETCH_SCALE
+	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash.modulate.a = 0.0
+	layer.add_child(flash)
+	pause_btn = ui_button("II", PAUSE_BTN, pause_game, 28)
+	pause_btn.visible = false
+	layer.add_child(pause_btn)
+	set_btn = ui_button("Ayarlar", SND_BTN, open_settings)
+	set_btn.visible = false
+	layer.add_child(set_btn)
+	pause_box = Control.new()
+	pause_box.theme = ui_theme()
+	pause_box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pause_box.visible = false
+	pause_box.gui_input.connect(func(ev): if paused and not set_open and ev is InputEventMouseButton and ev.pressed: resume_game())
+	layer.add_child(pause_box)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.5)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pause_box.add_child(dim)
+	pause_panel = centered(pause_box)
+	var pcol := pause_panel.get_child(0).get_child(0)
+	var title := hud_label(pcol, 32)
+	title.text = "Duraklatıldı\nDevam için dokun / tuşa bas"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var prow := HBoxContainer.new()
+	prow.alignment = BoxContainer.ALIGNMENT_CENTER
+	prow.add_child(ui_button("Devam", Vector2(180, 60), resume_game, 28))
+	prow.add_child(ui_button("Ayarlar", Vector2(180, 60), open_settings, 28))
+	pcol.add_child(prow)
+	set_panel = centered(pause_box)
+	set_panel.visible = false
+	var scol := set_panel.get_child(0).get_child(0)
+	hud_label(scol, 28).text = "Ayarlar"
+	var grid := GridContainer.new()
+	grid.columns = 2
+	scol.add_child(grid)
+	for k in ["ses", "titresim", "sarsinti", "yavas"]:
+		var b := ui_button("", Vector2(250, 60), toggle_setting.bind(k))
+		set_btns[k] = b
+		grid.add_child(b)
+	scol.add_child(ui_button("Kapat", Vector2(250, 60), close_settings, 28))
+	set_labels()
+
+
+# Ortalanmış panel + dikey kutu; dokunmayı arkasına geçirir (arka plan "devam" dokunuşunu alsın).
+func centered(parent: Control) -> CenterContainer:
+	var c := CenterContainer.new()
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(c)
+	var pc := PanelContainer.new()
+	c.add_child(pc)
+	pc.add_child(VBoxContainer.new())
+	return c
 
 
 # Menünün görünümü: HUD ile aynı yuvarlak krem paneller, turuncu düğme.
@@ -672,13 +892,19 @@ func on_start(isim: String) -> void:
 	hud_panel.visible = true
 	place_snd(false)
 	follow_cam(0.0)
+	close_panels()
 	state = "intro"
 	update_hud(0.0)  # açılışta önceki/varsayılan değerler görünmesin
 
 
 func follow_cam(z: float) -> void:
-	cam.position = Vector3(0, 6, z + 11)
-	cam.look_at(Vector3(0, 0, z - 8))
+	var pos := CAM_INTRO_POS.lerp(Vector3(0, CAM_HEIGHT, CAM_BACK), cam_mix)
+	var look := CAM_INTRO_LOOK.lerp(CAM_LOOK, cam_mix)
+	var a := shake_amount(shake_t, shake_on)
+	if a > 0.0:
+		pos += Vector3(randf_range(-a, a), randf_range(-a, a), 0)
+	cam.position = pos + Vector3(0, 0, z)
+	cam.look_at(look + Vector3(0, 0, z))
 
 
 func fill_rows(z: float) -> void:
@@ -692,6 +918,21 @@ func fill_rows(z: float) -> void:
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventScreenTouch and not touch:
 		apply_touch()  # masaüstü sanılan ama dokunmatik cihaz
+	if Engine.get_process_frames() < ignore_until:
+		return
+	var toggle: bool = (e is InputEventKey and e.pressed and not e.echo and e.keycode in [KEY_P, KEY_ESCAPE]) or (e is InputEventJoypadButton and e.pressed and e.button_index == JOY_BUTTON_START)
+	if toggle and (set_open or paused or state == "intro" or state == "run"):  # Esc bitişte/şölende eskisi gibi (menü / Geç)
+		if set_open:
+			close_settings()
+		elif paused:
+			resume_game()
+		else:
+			pause_game()
+		return
+	if set_open or paused:
+		if paused and not set_open and (e is InputEventKey or e is InputEventJoypadButton) and e.is_pressed() and not e.is_echo():
+			resume_game()  # dokunma/fare devamı pause_box'tan gelir
+		return
 	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_M and state != "menu":  # menüde isim kutusuna "m" yazılır: orada yalnız düğme
 		toggle_snd()
 		return
@@ -950,14 +1191,22 @@ func hurt(text: String) -> void:
 	play("bonk")
 	blink_t = BLINK_TIME
 	say(text)
+	pop(text, HUD_DANGER)  # önemli mesaj ortada da görünsün
 	vibrate(30)
 	burst(rabbit.position + Vector3(0, 0.7, 0), STAR_C, 10)  # vurulma yıldızları
+	hitstop_t = HITSTOP
+	shake_t = SHAKE_TIME if shake_on else 0.0
+	flash.modulate.a = 1.0
+	flash.create_tween().tween_property(flash, "modulate:a", 0.0, FLASH_TIME)
 
 
 func _process(delta: float) -> void:
 	delta = minf(delta, MAX_DT)
 	blink_t -= delta  # oyun bitse de sürsün, tavşan görünmez kalmasın
 	rabbit.visible = blink_t <= 0.0 or int(blink_t * 20.0) % 2 == 0
+	pause_btn.visible = (state == "intro" or state == "run") and not paused
+	if paused:
+		return
 	if state == "menu":
 		rabbit.rotation.y += MENU_SPIN * delta
 		return
@@ -988,6 +1237,11 @@ func _process(delta: float) -> void:
 		show_hint()
 		return  # açılışı atlayan tuş bu karede zıplatmasın ya da şerit değiştirmesin
 
+	if hitstop_t > 0.0:  # vurulma anında kısa duraksama
+		hitstop_t -= delta
+		return
+	shake_t -= delta
+	cam_mix = minf(cam_mix + delta / CAM_BLEND, 1.0)
 	clock += delta
 	speed = minf(speed + ACCEL * delta, SPEED_MAX)
 	if Input.is_action_just_pressed("ui_left"):
@@ -1006,7 +1260,7 @@ func _process(delta: float) -> void:
 		try_dash()
 	dash_t -= delta
 	var dashing := dash_t > 0.0
-	var spd := speed + (DASH_SPEED if dashing else 0.0)  # atılım hızı kalıcı speed'e eklenmez
+	var spd := (speed + (DASH_SPEED if dashing else 0.0)) * speed_mult(slow_on)  # atılım hızı kalıcı speed'e eklenmez
 	var was_air := ry > 0.0
 	vy -= GRAVITY * delta
 	ry = maxf(ry + vy * delta, 0.0)
@@ -1027,9 +1281,9 @@ func _process(delta: float) -> void:
 
 	gap = minf(gap + (GAP_REGEN + (DASH_GAP if dashing else 0.0)) * delta, GAP_MAX)
 	gap_shown = lerpf(gap_shown, gap, 6.0 * delta)  # çarpmada Halil ışınlanmasın, koşarak yaklaşsın
-	halil.position = Vector3(lerpf(halil.position.x, p.x, 2.0 * delta), 1.0, p.z + 1.5 + gap_shown * 0.5)
+	halil.position = Vector3(lerpf(halil.position.x, p.x + (HALIL_SIDE if lane < 2 else -HALIL_SIDE), 2.0 * delta), 1.0, p.z + 1.5 + gap_shown * 0.5)
 	follow_cam(p.z)
-	cam.fov = lerpf(cam.fov, 75.0 + (DASH_FOV if dashing else 0.0), 3.0 * delta)
+	cam.fov = lerpf(cam.fov, CAM_FOV + (DASH_FOV if dashing else 0.0), 3.0 * delta)
 	blind_t -= delta
 	bucket.visible = blind_t > 0.0
 	blind_rect.visible = bucket.visible
@@ -1111,8 +1365,14 @@ func run_throws(delta: float, p: Vector3, r: Vector3, spd: float) -> void:
 		var what: Array = THROWN.pick_random()
 		var ahead := spd * (RAKE_AHEAD if what[0] == "tırmık" else 1.0)
 		var to := Vector3(LANES[lane], 0, p.z - ahead)  # 1 sn sonra tavşanın olacağı yer
-		var obj := box(what[2], what[1], halil.position + Vector3(0, 1.2, 0), null, what[3])
-		throws.append({node = obj, marker = box(Vector3(1.4, 0.04, 1.4), M.TARGET_C, to + Vector3(0, 0.03, 0), null, "y"),
+		var obj := box(what[2], what[1], Vector3(halil.position.x, 2.2, minf(halil.position.z, p.z + THROW_FROM_Z)), null, what[3])  # kameranın yanından fırlayıp ekranı örtmesin
+		var marker := Node3D.new()
+		marker.position = to + Vector3(0, 0.03, 0)
+		add_child(marker)
+		box(Vector3(1.4, 0.04, 1.4), M.TARGET_C, Vector3.ZERO, marker, "y")
+		for a in [45.0, -45.0]:  # disk üstünde X: renk körleri için desen
+			box(Vector3(1.2, 0.03, 0.14), Color(1, 1, 1, 0.85), Vector3(0, 0.03, 0), marker, "b", Vector3(0, a, 0))
+		throws.append({node = obj, marker = marker,
 				from = obj.position, to = to, t = -delta / 2.0, item = what[0], lane = lane, spd = spd})  # bu karede de ilerler: yarım kare geriden başla ki her FPS'te tam 1 sn sonra insin
 		say("Halil %s fırlattı!" % what[0])
 		play("throw")
@@ -1153,6 +1413,10 @@ func update_hud(dist: float) -> void:
 	dist_bar.value = dist / GOAL * 100.0
 	var safe := clampf(gap / GAP_MAX, 0.0, 1.0)  # gap çarpınca negatif olabilir
 	gap_bar.value = safe * 100.0
+	gap_label.text = gap_text(safe)
+	var near := safe < 0.3  # renge ek olarak yazı, ▲ sayısı ve kalın koyu kenar
+	for side in 4:
+		gap_fill.set_border_width(side, 3 if near else 0)
 	gap_fill.bg_color = HUD_DANGER.lerp(HUD_WARN, safe * 2.0) if safe < 0.5 else HUD_WARN.lerp(HUD_SAFE, safe * 2.0 - 1.0)
 	msg_label.text = msg
 	for i in dash_pips.size():  # dolu havuçlar renkli, boşlar soluk
@@ -1165,6 +1429,13 @@ func update_hud(dist: float) -> void:
 			dash_hinted = true
 			pop("↓ ile atıl!", M.CARROT_C)
 	msg_label.modulate.a = 1.0 if msg_t > 0.0 and state == "run" else 0.0  # metni silmek paneli zıplatırdı
+
+
+# Halil çubuğunun yazısı: yalnız renge güvenme (renk körlüğü).
+static func gap_text(safe: float) -> String:
+	if safe < 0.3:
+		return "Halil'e uzaklık: YAKIN! ▲▲▲"
+	return "Halil'e uzaklık: dikkat ▲" if safe < 0.6 else "Halil'e uzaklık: güvenli"
 
 
 # Koşu bitti: puanı tabloya yaz. Kazanılırsa yuvaya girilip şölen verilir (feast), sonra panel; kaybedilirse panel hemen.
@@ -1410,8 +1681,17 @@ func toggle_snd() -> void:
 
 func snd_label() -> void:
 	snd_btn.text = "Ses: Açık" if snd_on else "Ses: Kapalı"
+	if set_btns.has("ses"):
+		set_btns.ses.text = snd_btn.text
 
 
 # Menüde sağ altta (sağ üstte skor kutusu var), oyunda sağ üstte.
 func place_snd(menu: bool) -> void:
 	snd_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT if menu else Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
+	set_btn.visible = menu  # menüde sol üst köşe (orada başka şey yok)
+	set_btn.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 16)
+	set_btn.grow_horizontal = Control.GROW_DIRECTION_END
+	set_btn.grow_vertical = Control.GROW_DIRECTION_END
+	pause_btn.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 16)  # ses düğmesinin solunda
+	pause_btn.offset_left -= SND_BTN.x + 8
+	pause_btn.offset_right -= SND_BTN.x + 8
