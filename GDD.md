@@ -116,3 +116,10 @@ Kaynak: `PLAN-mekanikler.md` bölüm 1 (2026-11-02 eleştirisi).
 - `oyun/main.gd`: sahne, mekanik ve HUD kodu. Dokunmadan önce diğer ajana haber verilir.
 - `oyun/modeller.gd`: model verisi (`[boyut, renk, konum, şekil?, dönüş?]`). Kod girmez.
 - `oyun/test.gd`: çarpışma ve mekanik testleri (`timeout 20 godot --headless --path . -s test.gd`).
+
+## Ses
+
+- Tüm sesler kodla üretilir (`oyun/ses.gd`, `AudioStreamWAV` 16 bit mono; dosya yok, indirme yok), açılışta bir kez üretilip önbelleğe alınır (~66 ms masaüstü).
+- Efektler: zıplama, iniş, havuç, çarpma (bonk), atılım, Halil'in fırlatması, kıl payı, Karabaş havlaması, kaz, kazanma, yakalanma, menü tık, "HEY!", yuva kıtırı. Müzik: 8 sn döngülü, sakin C pentatonik melodi + bas, efektlerin altında (-22 dB).
+- Ses düğmesi: menüde sağ altta, oyunda sağ üstte ("Ses: Açık/Kapalı", 150x60); oyunda M tuşu (menüde M isim kutusuna yazıldığı için yalnız düğme). Seçim `ayar.cfg [ayar] ses` (varsayılan açık).
+- Ekransızda (kalite kapısı) ses kurulmaz; ayar mantığı yine çalışır.

@@ -57,6 +57,8 @@ func _process(_d: float) -> bool:
 		if ad == "fare_bos":  # boş yere tıkla: isim kutusu odağı kaybetse de Enter çalışmalı
 			click(Vector2(40, 400))
 		key(KEY_ENTER, true)
+	if ad == "ses":
+		ses_test(m)
 	if f == 32:
 		key(KEY_ENTER, false)
 	if f == 60 and ad != "menu":
@@ -144,6 +146,39 @@ func touch_test(m) -> void:
 				fail("bırakma ek eylem yaptı (şerit %d)" % m.lane)
 
 
+# Ses: ayar mantığı ekransızda da çalışır (oynatıcı yok, düğme ve kayıt var). Menüde düğme, oyunda M tuşu.
+func ses_test(m) -> void:
+	match f:
+		12:
+			if m.snd_btn == null or m.snd_btn.custom_minimum_size.y < 56.0 or m.snd_btn.custom_minimum_size.x < 56.0:
+				fail("ses düğmesi yok ya da küçük")
+			elif not m.snd_on or Secim.config().get_value("ayar", "ses", true) != true:
+				fail("ses varsayılanı açık olmalı")
+		14: m.snd_btn.pressed.emit()
+		16:
+			if m.snd_on or Secim.config().get_value("ayar", "ses", true) != false or m.snd_btn.text != "Ses: Kapalı":
+				fail("menü düğmesi sesi kapatmadı")
+		18: m.snd_btn.pressed.emit()
+		20:
+			if not m.snd_on or Secim.config().get_value("ayar", "ses", false) != true:
+				fail("menü düğmesi sesi açmadı")
+		22: key(KEY_M, true)  # menüde M isim kutusuna yazar, ses değişmez
+		24:
+			key(KEY_M, false)
+			if not m.snd_on:
+				fail("menüde M sesi değiştirdi")
+		100: key(KEY_M, true)
+		102: key(KEY_M, false)
+		104:
+			if m.snd_on or Secim.config().get_value("ayar", "ses", true) != false:
+				fail("M tuşu sesi kapatmadı (durum %s)" % m.state)
+		110: key(KEY_M, true)
+		112: key(KEY_M, false)
+		114:
+			if not m.snd_on or Secim.config().get_value("ayar", "ses", false) != true:
+				fail("M tuşu sesi açmadı")
+
+
 func click(at: Vector2) -> void:
 	for down in [true, false]:
 		var e := InputEventMouseButton.new()
@@ -163,7 +198,7 @@ func key(k: Key, down: bool) -> void:
 
 
 func check(m) -> bool:
-	var want := {menu = "menu", kazan_sofra = "win", dokunma = "run", menu_enter = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
+	var want := {menu = "menu", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
 			isim_bos = "run", isim_uzun = "run", isim_turkce = "run", bolgeler = "run", fare_bos = "run", bozuk_cfg = "over", skor_bos = "over", skor_dolu = "over"}
 	if not want.has(ad):
 		return fail("bilinmeyen senaryo")

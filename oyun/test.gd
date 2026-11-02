@@ -4,6 +4,7 @@ extends SceneTree
 const Main = preload("res://main.gd")
 const Secim = preload("res://secim.gd")
 const Mod = preload("res://modeller.gd")
+const Ses = preload("res://ses.gd")
 
 
 func _init() -> void:
@@ -40,6 +41,9 @@ func _init() -> void:
 		[[Main.touch_action(10, 300, Vector2(0, 30)), Main.touch_action(10, 300, Vector2(90, 80)), Main.touch_action(150, 300, Vector2(0, 50), 40.0)], ["left", "left", "dash"], "kısa ya da yatay kaydırma atıl değil, eşik ekrana bağlı"],
 		[[Main.swipe_min(200), Main.swipe_min(844), Main.swipe_min(2000)], [40.0, 67.52, 90.0], "kaydırma eşiği ekran yüksekliğinin %8'i, 40..90"],
 		[[Main.near_miss(1, 0.28, 1, false), Main.near_miss(1, 0.28, 1, false, Main.NEAR_TIME_TOUCH)], [false, true], "telefonda kıl payı penceresi geniş"],
+		[[Ses.parse_on(true), Ses.parse_on(false), Ses.parse_on("x"), Ses.parse_on(null), Ses.parse_on(0)], [true, false, true, true, true], "ses ayarı: yalnız bool geçerli, değilse açık"],
+		[Ses.make_all().keys().filter(func(k): return Ses.check(Ses.make_all()[k]) != ""), [], "tüm sesler: süre, tepe <= 0,8, kırpma ve sessizlik yok"],
+		[Ses.make_all().music.loop_mode == AudioStreamWAV.LOOP_FORWARD and Ses.make_all().music.loop_end == Ses.make_all().music.data.size() / 2, true, "müzik döngülü, döngü sonu örnek sayısı"],
 	]
 	var failed := 0
 	for c in cases:

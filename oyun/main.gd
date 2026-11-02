@@ -10,6 +10,7 @@ const M := preload("res://modeller.gd")  # model verisi (Tasarımcı)
 const THROWN := [["kova", M.METAL, Vector3(0.5, 0.5, 0.5), "y"], ["tırmık", M.WOOD, Vector3(0.12, 0.12, 1.3), "b"],
 		["yumurta", M.EGG_WHITE, Vector3(0.3, 0.4, 0.3), "s"], ["lahana", M.CABBAGE_LIGHT, Vector3(0.55, 0.5, 0.55), "s"]]  # [ad, renk, boyut, şekil]; etki ada göre
 const Secim := preload("res://secim.gd")
+const Ses := preload("res://ses.gd")  # kodla üretilen sesler
 
 # Menü ve Bölüm 1 (PLAN-karakter-secimi.md, PLAN-bolum1.md)
 const MENU_CAM := Vector3(1.9, 1.0, -3.0)  # menü kamerası, tavşana göre (Tasarımcı ayarlar)
@@ -55,7 +56,8 @@ const FEAST_BITE_GAP := 0.12  # dokunma + emüle fare çift ısırık saymasın
 const FEAST_BITES := 3      # bir yığın kaç ısırıkta biter
 const FEAST_END_WAIT := 0.5 # "Mmm!" süresi (FEAST_MAX içinde)
 const FEAST_BG := Color(0.3, 0.2, 0.14)  # odanın dışı: koyu toprak (gökyüzü görünmesin)
-const SFX_RATE := 22050.0
+const SND_BTN := Vector2(150, 60)  # ses düğmesi (parmak hedefi >= 56 px)
+const POOL := 6  # eşzamanlı efekt oynatıcı sayısı (sabit)
 
 static var go_menu := true  # sahne yenilense de korunur: bitişte Enter menüyü atlar, Esc menüye döner
 
@@ -178,8 +180,12 @@ var feast_from := Vector3.ZERO  # giriş sıçrayışının başlangıcı (rabbi
 var feast_cam_from := Vector3.ZERO
 var feast_fade: ColorRect
 var skip_btn: Button
-var sfx: AudioStreamPlayer
-var sfx_buf := []  # önceden üretilmiş kıtır sesleri (AudioStreamWAV)
+var snd_on := true     # ayar.cfg [ayar] ses
+var snd_btn: Button
+var snd_bank := {}      # ad -> AudioStreamWAV (ekransızda boş)
+var snd_pool: Array[AudioStreamPlayer] = []
+var snd_next := 0
+var music: AudioStreamPlayer
 var scenery: Node3D  # zemin, yol ve tepeler: tavşanla birlikte kayar
 var cam: Camera3D
 var hud: Label
@@ -384,11 +390,12 @@ func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
 	return root
 
 
-# Telefon ayarları (menüsü yok; ayar.cfg [ayar] bölümü: titresim = true/false, fps = 30/60). Okuma hatası varsayılana düşer.
+# Telefon ayarları (ayar.cfg [ayar] bölümü: titresim = true/false, ses = true/false, fps = 30/60). Okuma hatası varsayılana düşer.
 func load_settings() -> void:
 	var cf := Secim.config()
 	var v = cf.get_value("ayar", "titresim", true)
 	vibrate_on = v if v is bool else true
+	snd_on = Ses.parse_on(cf.get_value("ayar", "ses", true))
 	var fps = cf.get_value("ayar", "fps", 0)
 	if fps is int and fps in [30, 60]:
 		Engine.max_fps = fps
@@ -466,6 +473,7 @@ func _ready() -> void:
 	add_child(cam)
 
 	make_hud()
+	make_audio()
 
 	model(M.FENCE, Vector3(-3.4, 0.3, 0.6)).rotation.y = 0.5  # başlangıç süsü (menü + açılış): yol kenarında çit ve havuç yığını
 	model(M.BURROW.slice(2), Vector3(-0.9, 0, -1.5))
@@ -479,7 +487,10 @@ func _ready() -> void:
 		for c in menu.get_children():
 			c.theme = t
 		menu.renk.connect(make_rabbit)
+		menu.renk.connect(func(_s): play("click"))
 		menu.basla.connect(on_start)
+		menu.basla.connect(func(_n): play("click"))
+		place_snd(true)
 	else:
 		on_start(rabbit_name)
 
@@ -602,6 +613,17 @@ func make_hud() -> void:
 	skip_btn.visible = false
 	skip_btn.pressed.connect(feast_finish)
 	layer.add_child(skip_btn)
+	snd_btn = Button.new()  # ses aç/kapat: menüde sağ altta, oyunda sağ üstte (telefonda büyük hedef)
+	snd_btn.theme = ui_theme()
+	snd_btn.add_theme_font_size_override("font_size", 24)
+	snd_btn.focus_mode = Control.FOCUS_NONE  # menüde odak isim kutusunda kalsın
+	snd_btn.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
+	snd_btn.custom_minimum_size = SND_BTN
+	snd_btn.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	snd_btn.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	snd_btn.pressed.connect(toggle_snd)
+	layer.add_child(snd_btn)
+	snd_label()
 	hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE  # HUD dokunmayı yutmasın: telefonda sol üst bölge de oyuna gitsin
 	for c in hud_panel.find_children("*", "Control", true, false):
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -648,6 +670,7 @@ func on_start(isim: String) -> void:
 	rabbit.position.x = INTRO_X
 	rabbit.rotation.y = INTRO_FACE
 	hud_panel.visible = true
+	place_snd(false)
 	follow_cam(0.0)
 	state = "intro"
 	update_hud(0.0)  # açılışta önceki/varsayılan değerler görünmesin
@@ -669,6 +692,9 @@ func fill_rows(z: float) -> void:
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventScreenTouch and not touch:
 		apply_touch()  # masaüstü sanılan ama dokunmatik cihaz
+	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_M and state != "menu":  # menüde isim kutusuna "m" yazılır: orada yalnız düğme
+		toggle_snd()
+		return
 	if state == "feast":
 		feast_input(e)
 		return
@@ -731,6 +757,7 @@ func try_dash() -> void:
 		carrots -= DASH_COST
 		dash_t = DASH_TIME
 		say("Atıl!")
+		play("dash")
 		vibrate(40)
 
 
@@ -887,6 +914,7 @@ func run_dog(delta: float, p: Vector3, r: Vector3) -> void:
 		dog = {node = model(M.DOG, Vector3(LANES[lane], 0.3, p.z + DOG_START)), warn = model(M.WARN_STRIP, Vector3(LANES[lane], 0.03, p.z)),
 				lane = lane, rel = DOG_START}
 		say("Hav! Karabaş arkanda")
+		play("bark")
 	if dog.is_empty():
 		return
 	var was: float = dog.rel
@@ -919,6 +947,7 @@ func say(text: String) -> void:
 
 func hurt(text: String) -> void:
 	gap -= HIT_COST
+	play("bonk")
 	blink_t = BLINK_TIME
 	say(text)
 	vibrate(30)
@@ -941,6 +970,8 @@ func _process(delta: float) -> void:
 		fill_rows(0.0)
 		for c in crossed(INTRO_CUES.keys(), intro_t, intro_t + delta):
 			pop(INTRO_CUES[c], HUD_WARN)
+			if INTRO_CUES[c].begins_with("HEY"):
+				play("hey")
 		intro_t += delta
 		var k := smoothstep(INTRO_DASH.x, INTRO_DASH.y, intro_t)  # 0: çimde kemiriyor, 1: yolda
 		body(rabbit).rotation.x = sin(intro_t * 14.0) * 0.08 * (1.0 - k)  # havuç kemirirken kafa sallanır
@@ -968,6 +999,7 @@ func _process(delta: float) -> void:
 	if jump_t > 0.0 and ry == 0.0:
 		jump_t = 0.0
 		vy = JUMP_VY
+		play("jump")
 		rabbit.scale = JUMP_STRETCH
 	jump_t -= delta
 	if Input.is_action_just_pressed("ui_down"):
@@ -982,6 +1014,7 @@ func _process(delta: float) -> void:
 		vy = 0.0  # yerdeyken eksiye birikmesin
 	if was_air and ry == 0.0:
 		rabbit.scale = LAND_SQUASH
+		play("land")
 		burst(Vector3(rabbit.position.x, 0.05, rabbit.position.z), M.DUST_C, 8, Vector2(0.8, 1.6))  # iniş pufu
 	rabbit.scale = rabbit.scale.lerp(Vector3.ONE, SQUASH_BACK * delta)
 
@@ -1046,6 +1079,7 @@ func run_items(delta: float, p: Vector3, r: Vector3, t: float) -> void:
 			it.kind = "deco"  # her kaz bir kez öter
 			throw_timer = minf(throw_timer, 0.3)
 			say("Vak vak! Halil duydu")
+			play("goose")
 		if it.kind == "slick" and hits(r, n.position.x, n.position.z, it.h):
 			it.kind = "deco"  # bir kez kaydırır, sonra süs olarak kalır
 			lane = near_lanes(lane).pick_random()  # set_lane değil: kayma kıl payı sayılmasın
@@ -1058,6 +1092,7 @@ func run_items(delta: float, p: Vector3, r: Vector3, t: float) -> void:
 				carrots += 1
 				carrots_total += 1
 				burst(n.position, M.CARROT_C, 12)  # havuç parıltısı
+				play("carrot")
 				vibrate(15)
 				var tw := n.create_tween()
 				tw.tween_property(n, "scale", Vector3.ONE * 1.6, POP_TIME)
@@ -1080,6 +1115,7 @@ func run_throws(delta: float, p: Vector3, r: Vector3, spd: float) -> void:
 		throws.append({node = obj, marker = box(Vector3(1.4, 0.04, 1.4), M.TARGET_C, to + Vector3(0, 0.03, 0), null, "y"),
 				from = obj.position, to = to, t = -delta / 2.0, item = what[0], lane = lane, spd = spd})  # bu karede de ilerler: yarım kare geriden başla ki her FPS'te tam 1 sn sonra insin
 		say("Halil %s fırlattı!" % what[0])
+		play("throw")
 	for i in range(throws.size() - 1, -1, -1):
 		var th: Dictionary = throws[i]
 		th.t += delta
@@ -1099,6 +1135,7 @@ func run_throws(delta: float, p: Vector3, r: Vector3, spd: float) -> void:
 				if near_miss(lane_left, clock - lane_left_t, th.lane, hits(Vector3(r.x, 0, r.z), th.to.x, th.to.z, THROW_H), near_win):
 					gap = minf(gap + NEAR_BONUS, GAP_MAX)
 					say("Kıl payı!")
+					play("near")
 					pop("Kıl payı!", HUD_WARN)
 				# Iskalanan yumurta/lahana sekip ileri düşer; tavşanın arkasında kalsa etkisi olmazdı
 				var fwd: Vector3 = th.to - Vector3(0, 0, th.spd * BOUNCE_AHEAD)
@@ -1135,6 +1172,7 @@ func finish(won: bool, dist: float) -> void:
 	blind_rect.visible = false  # kova karartması bitiş panelini örtmesin
 	bucket.visible = false
 	run_dust.emitting = false
+	play("win" if won else "lose")
 	var pts := score(dist, carrots_total, won)
 	var entry := {isim = rabbit_name, puan = pts}
 	var table := Secim.insert_score(Secim.load_scores(), entry)
@@ -1180,7 +1218,6 @@ func begin_feast() -> void:
 	skip_btn.visible = true
 	feast_fade.visible = true
 	hint_box.visible = false  # dokunma ipucu şölene taşmasın
-	make_sfx()
 
 
 func feast_input(e: InputEvent) -> void:
@@ -1327,31 +1364,54 @@ func feast_finish() -> void:
 	show_end(true)
 
 
-# Kodla üretilen kıtır sesi (dosya yok): gürültüden iki kısa AudioStreamWAV. AudioStreamGenerator denendi, çıkışta motor sızıntı
-# uyarısı veriyor (kapı bunu hata sayar) ve webde WAV daha hafif. Oynatıcı ya da ses sürücüsü yoksa sessiz geçer.
-func make_sfx() -> void:
-	if sfx or DisplayServer.get_name() == "headless":  # ekransızda ses sürücüsü sahte: oynatılan her ses çıkışta sızıntı uyarısı verir
+# Ses: üretim ses.gd'de. Ekransızda ses sürücüsü sahte (çıkışta sızıntı uyarısı verir): hiç kurulmaz, play() sessiz geçer.
+# Oynatıcılar sabit: POOL efekt (sırayla) + 1 müzik. Tarayıcı sesi ilk dokunuştan sonra açar (Godot kendisi yönetir).
+func make_audio() -> void:
+	if DisplayServer.get_name() == "headless":
 		return
-	sfx = AudioStreamPlayer.new()
-	sfx.volume_db = -6.0
-	add_child(sfx)
-	var n := int(0.12 * SFX_RATE)
-	for v in 2:  # iki çeşit, art arda aynı ses sıkmasın
-		var data := PackedByteArray()
-		data.resize(n * 2)
-		var lp := 0.0
-		for i in n:
-			var t := float(i) / SFX_RATE
-			lp = lerpf(lp, randf() * 2.0 - 1.0, 0.55)  # hafif alçak geçiren gürültü
-			data.encode_s16(i * 2, int(lp * exp(-fmod(t, 0.045) * (70.0 + v * 30.0)) * (1.0 - t / 0.12) * 0.7 * 32767.0))
-		var wav := AudioStreamWAV.new()
-		wav.format = AudioStreamWAV.FORMAT_16_BITS
-		wav.mix_rate = int(SFX_RATE)
-		wav.data = data
-		sfx_buf.append(wav)
+	snd_bank = Ses.make_all()
+	for i in POOL:
+		var p := AudioStreamPlayer.new()
+		p.volume_db = -8.0
+		add_child(p)
+		snd_pool.append(p)
+	music = AudioStreamPlayer.new()
+	music.stream = snd_bank.music
+	music.volume_db = -22.0  # efektlerin altında
+	add_child(music)
+	if snd_on:
+		music.play()
+
+
+func play(snd: String) -> void:
+	if snd_on and not snd_pool.is_empty():
+		snd_pool[snd_next].stream = snd_bank[snd]
+		snd_pool[snd_next].play()
+		snd_next = (snd_next + 1) % POOL
 
 
 func crunch() -> void:
-	if sfx and not sfx_buf.is_empty():
-		sfx.stream = sfx_buf[feast_bites % 2]
-		sfx.play()
+	play("crunch%d" % (feast_bites % 2))
+
+
+func toggle_snd() -> void:
+	snd_on = not snd_on
+	Secim.save("ayar", {ses = snd_on})
+	snd_label()
+	if music:
+		if snd_on:
+			music.play()
+		else:
+			music.stop()
+			for p in snd_pool:
+				p.stop()
+	play("click")
+
+
+func snd_label() -> void:
+	snd_btn.text = "Ses: Açık" if snd_on else "Ses: Kapalı"
+
+
+# Menüde sağ altta (sağ üstte skor kutusu var), oyunda sağ üstte.
+func place_snd(menu: bool) -> void:
+	snd_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT if menu else Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
