@@ -1,6 +1,15 @@
 extends RefCounted
 # Tasarımcının dosyası: model verisi. Kod buraya girmez.
 # Parça: [boyut, renk, köke göre konum, şekil?, dönüş(derece)?]. Şekil: b kutu, s küre, c kapsül, y silindir, k koni (uç +y), t simit.
+# SÖZLEŞME (yuva finali; Geliştirici bu adlara bağlar). Hepsi kök = yer seviyesi (y = 0), dekor: çarpışmaz. Parça sayısı ve yaklaşık boyut (geniş x yüksek):
+#   M.VEG_TURNIP     5 parça  0.4 x 0.65   turp
+#   M.VEG_CORN       5 parça  0.25 x 0.85  mısır
+#   M.VEG_TOMATO     5 parça  0.42 x 0.45  domates
+#   M.VEG_EGGPLANT   5 parça  0.34 x 0.75  patlıcan
+#   M.VEG_CABBAGE    5 parça  0.52 x 0.5   lahana (yenen; fırlatılan M.CABBAGE değişmedi)
+#   M.CARROT_PILE    6 parça  0.9 x 0.4 (z 0.6)  havuç yığını; yenirken kök ölçeklenir
+#   M.BURROW_INSIDE  41 parça 10 x 4.5 x 9, -z arka duvar, +z açık (kamera); zemin ortası kökte, tavşan (0,0,0)
+# Yuva içi ışık hissi: LAMP_GLOW_A saydam leke + sıcak toprak tonları; OmniLight gerekmez.
 # Kök = çarpışma noktası; kökü kaydırma, sadece parçaları oynat. İleri yön -z, kamera +z tarafında (arka taraf önemli).
 
 # Palet (PLAN-gorunum.md). Const içinde Color("#hex") olmaz, r/g/b yazılır.
@@ -411,3 +420,118 @@ const FARM_SET := [
 	[TREE, Vector3(-5, 0, 7), 0, 1.0], [TREE, Vector3(-13, 0, 12), 40, 1.0], [TREE, Vector3(8, 0, 12), 90, 1.0], [BUSH, Vector3(-6, 0, 12), 0, 1.0],
 	[FENCE, Vector3(-5, 0.3, 21), 90, 1.0], [FENCE, Vector3(-9, 0.3, 21), 90, 1.0], [FENCE, Vector3(2, 0.3, 21), 90, 1.0],
 ]
+
+# --- Yuva finali (PLAN-yuva-finali.md): sebze şöleni ve yuva içi. Kökler yer seviyesinde (y = 0). ---
+const TURNIP_W := Color(0.91, 0.878, 0.816)    # E8E0D0
+const TURNIP_P := Color(0.788, 0.282, 0.478)   # C9487A
+const CORN_Y := Color(0.941, 0.784, 0.29)      # F0C84A
+const CORN_HUSK := Color(0.62, 0.74, 0.34)     # mısır kabuğu, LEAF'ten sarıya kaçık
+const TOMATO_C := Color(0.851, 0.314, 0.247)   # D9503F
+const EGGPLANT_C := Color(0.42, 0.247, 0.478)  # 6B3F7A
+const EGGPLANT_HI := Color(0.55, 0.36, 0.6)    # parlama şeridi
+const VEG_STEM := Color(0.33, 0.58, 0.27)      # domates çanağı, patlıcan kapağı
+const SILK_C := Color(0.55, 0.38, 0.22)        # mısır püskülü
+const EARTH_WALL := Color(0.5, 0.34, 0.22)
+const EARTH_DEEP := Color(0.4, 0.27, 0.18)
+const EARTH_FLOOR := Color(0.62, 0.44, 0.29)
+const RUG_C := Color(0.78, 0.42, 0.32)
+const RUG_IN := Color(0.93, 0.8, 0.55)
+const ROOT_C := Color(0.74, 0.58, 0.4)
+const LAMP_GLOW := Color(1.0, 0.84, 0.48)
+const LAMP_GLOW_A := Color(1.0, 0.8, 0.4, 0.22)  # zemindeki ışık lekesi (saydam)
+
+# Turp: ~0.4 geniş, 0.65 yüksek. Beyaz gövde, pembe-mor omuz, yeşil yaprak.
+const VEG_TURNIP := [
+	[Vector3(0.4, 0.36, 0.4), TURNIP_W, Vector3(0, 0.2, 0), "s"],
+	[Vector3(0.4, 0.2, 0.4), TURNIP_P, Vector3(0, 0.32, 0), "s"],                          # mor omuz
+	[Vector3(0.08, 0.18, 0.08), TURNIP_W, Vector3(0, 0.02, 0), "k", Vector3(180, 0, 0)],  # kök ucu
+	[Vector3(0.07, 0.3, 0.05), LEAF, Vector3(-0.06, 0.55, 0), "c", Vector3(0, 0, 20)],   # yapraklar
+	[Vector3(0.07, 0.3, 0.05), LEAF, Vector3(0.06, 0.55, 0), "c", Vector3(0, 0, -20)],
+]
+# Mısır: ~0.25 geniş, 0.8 yüksek. Sarı koçan, iki kabuk yaprağı, püskül.
+const VEG_CORN := [
+	[Vector3(0.22, 0.62, 0.22), CORN_Y, Vector3(0, 0.42, 0), "c"],
+	[Vector3(0.16, 0.5, 0.07), CORN_HUSK, Vector3(-0.08, 0.3, 0.06), "c", Vector3(0, 0, 10)],  # kabuklar
+	[Vector3(0.16, 0.5, 0.07), CORN_HUSK, Vector3(0.08, 0.3, 0.06), "c", Vector3(0, 0, -10)],
+	[Vector3(0.1, 0.14, 0.1), CORN_HUSK, Vector3(0, 0.07, 0), "y"],                         # sap dibi
+	[Vector3(0.08, 0.14, 0.08), SILK_C, Vector3(0, 0.77, 0), "k"],                           # püskül
+]
+# Domates: ~0.42 geniş, 0.42 yüksek. Kırmızımsı gövde, yeşil çanak.
+const VEG_TOMATO := [
+	[Vector3(0.42, 0.36, 0.42), TOMATO_C, Vector3(0, 0.18, 0), "s"],
+	[Vector3(0.22, 0.05, 0.09), VEG_STEM, Vector3(0, 0.36, 0), "s"],                         # çanak yaprakları
+	[Vector3(0.22, 0.05, 0.09), VEG_STEM, Vector3(0, 0.36, 0), "s", Vector3(0, 60, 0)],
+	[Vector3(0.22, 0.05, 0.09), VEG_STEM, Vector3(0, 0.36, 0), "s", Vector3(0, 120, 0)],
+	[Vector3(0.04, 0.09, 0.04), VEG_STEM, Vector3(0, 0.41, 0), "y"],                         # sap
+]
+# Patlıcan: ~0.34 geniş, 0.75 yüksek. Mor gövde, parlama, yeşil kapak.
+const VEG_EGGPLANT := [
+	[Vector3(0.34, 0.34, 0.34), EGGPLANT_C, Vector3(0, 0.18, 0), "s"],                      # şişkin alt
+	[Vector3(0.24, 0.5, 0.24), EGGPLANT_C, Vector3(0, 0.42, 0), "c"],                       # gövde
+	[Vector3(0.05, 0.3, 0.04), EGGPLANT_HI, Vector3(-0.1, 0.28, 0.1), "c", Vector3(0, 0, 8)],  # parlama
+	[Vector3(0.24, 0.08, 0.24), VEG_STEM, Vector3(0, 0.66, 0), "s"],                        # kapak
+	[Vector3(0.05, 0.12, 0.05), VEG_STEM, Vector3(0, 0.73, 0), "y"],
+]
+# Lahana: ~0.52 geniş, 0.5 yüksek (yenen sebze; CABBAGE ise fırlatılan yuvarlak). Kök y = 0.
+const VEG_CABBAGE := [
+	[Vector3(0.5, 0.46, 0.5), CABBAGE_LIGHT, Vector3(0, 0.23, 0), "s"],
+	[Vector3(0.56, 0.3, 0.2), CABBAGE_DARK, Vector3(0, 0.2, 0.2), "s", Vector3(-25, 0, 0)],  # dış yapraklar
+	[Vector3(0.56, 0.3, 0.2), CABBAGE_DARK, Vector3(0, 0.2, -0.2), "s", Vector3(25, 0, 0)],
+	[Vector3(0.2, 0.3, 0.56), CABBAGE_DARK, Vector3(-0.2, 0.2, 0), "s", Vector3(0, 0, 25)],
+	[Vector3(0.3, 0.12, 0.3), CABBAGE_ODD, Vector3(0, 0.46, 0), "s"],                         # açık iç yaprak
+]
+# Havuç yığını: ~0.9 x 0.4 x 0.6. Yatık dört havuç, iki yaprak demeti. Havuç sayısına göre kod ölçekler.
+const CARROT_PILE := [
+	[Vector3(0.2, 0.5, 0.2), CARROT_C, Vector3(0.05, 0.11, 0.18), "k", Vector3(0, 0, -90)],
+	[Vector3(0.2, 0.5, 0.2), CARROT_C, Vector3(-0.05, 0.11, -0.02), "k", Vector3(0, 0, 90)],
+	[Vector3(0.2, 0.5, 0.2), CARROT_C, Vector3(0, 0.11, -0.22), "k", Vector3(0, 10, -85)],
+	[Vector3(0.2, 0.5, 0.2), CARROT_C, Vector3(0, 0.28, 0.0), "k", Vector3(0, 20, -92)],
+	[Vector3(0.14, 0.3, 0.08), LEAF, Vector3(-0.3, 0.12, 0.18), "c", Vector3(0, 0, 90)],    # yaprak demetleri
+	[Vector3(0.14, 0.3, 0.08), LEAF, Vector3(0.3, 0.12, -0.02), "c", Vector3(0, 0, 90)],
+]
+
+# Yuva içi: toprak oda, sıcak lamba. Kök = zemin ortası (y = 0), -z duvara, +z kameraya (açık) bakar. Yaklaşık 10 x 4.5 x 9 m.
+const BURROW_INSIDE := [
+	[Vector3(10, 0.2, 9), EARTH_FLOOR, Vector3(0, -0.1, 0), "y"],   # zemin
+	[Vector3(3.6, 0.05, 3.6), RUG_C, Vector3(0, 0.02, 0.3), "y"],   # yuvarlak halı
+	[Vector3(2.4, 0.04, 2.4), RUG_IN, Vector3(0, 0.045, 0.3), "y"],   # halı iç halka
+	[Vector3(7, 0.03, 6), LAMP_GLOW_A, Vector3(0, 0.03, 0.3), "y"],   # lamba ışığı lekesi (saydam, ayrı kalır)
+	[Vector3(3.4, 3.6, 3.4), EARTH_WALL, Vector3(-4.44, 1, -1.19), "s"],   # alt duvar
+	[Vector3(3.4, 3.6, 3.4), EARTH_DEEP, Vector3(-3.52, 1, -2.96), "s"],
+	[Vector3(3.4, 3.6, 3.4), EARTH_WALL, Vector3(-1.94, 1, -4.17), "s"],
+	[Vector3(3.4, 3.6, 3.4), EARTH_DEEP, Vector3(0, 1, -4.6), "s"],
+	[Vector3(3.4, 3.6, 3.4), EARTH_WALL, Vector3(1.94, 1, -4.17), "s"],
+	[Vector3(3.4, 3.6, 3.4), EARTH_DEEP, Vector3(3.52, 1, -2.96), "s"],
+	[Vector3(3.4, 3.6, 3.4), EARTH_WALL, Vector3(4.44, 1, -1.19), "s"],
+	[Vector3(3.2, 3.2, 3.2), EARTH_DEEP, Vector3(-3.71, 3, -1.97), "s"],   # üst duvar
+	[Vector3(3.2, 3.2, 3.2), EARTH_WALL, Vector3(-2.53, 3, -3.35), "s"],
+	[Vector3(3.2, 3.2, 3.2), EARTH_DEEP, Vector3(-0.87, 3, -4.11), "s"],
+	[Vector3(3.2, 3.2, 3.2), EARTH_WALL, Vector3(0.87, 3, -4.11), "s"],
+	[Vector3(3.2, 3.2, 3.2), EARTH_DEEP, Vector3(2.53, 3, -3.35), "s"],
+	[Vector3(3.2, 3.2, 3.2), EARTH_WALL, Vector3(3.71, 3, -1.97), "s"],
+	[Vector3(3.2, 1.6, 3.2), EARTH_WALL, Vector3(-2.2, 4.1, -2.2), "s"],   # tavan
+	[Vector3(3.2, 1.6, 3.2), EARTH_WALL, Vector3(0, 4.1, -2.6), "s"],
+	[Vector3(3.2, 1.6, 3.2), EARTH_WALL, Vector3(2.2, 4.1, -2.2), "s"],
+	[Vector3(3.2, 1.6, 3.2), EARTH_WALL, Vector3(-2, 4.1, 0.5), "s"],
+	[Vector3(3.2, 1.6, 3.2), EARTH_WALL, Vector3(2, 4.1, 0.5), "s"],
+	[Vector3(0.09, 0.9, 0.09), ROOT_C, Vector3(-3, 3.05, -3), "c", Vector3(0, 0, -7)],   # sarkan kök
+	[Vector3(0.09, 1.2, 0.09), ROOT_C, Vector3(-1.2, 2.9, -3.6), "c", Vector3(0, 0, 0)],
+	[Vector3(0.09, 0.8, 0.09), ROOT_C, Vector3(1, 3.1, -3.5), "c", Vector3(0, 0, 7)],
+	[Vector3(0.09, 1.1, 0.09), ROOT_C, Vector3(3, 2.95, -2.8), "c", Vector3(0, 0, -1)],
+	[Vector3(0.09, 0.8, 0.09), ROOT_C, Vector3(-3.6, 3.1, -0.6), "c", Vector3(0, 0, 6)],
+	[Vector3(0.09, 1, 0.09), ROOT_C, Vector3(3.6, 3, -0.4), "c", Vector3(0, 0, -2)],
+	[Vector3(0.03, 0.9, 0.03), WOOD, Vector3(0, 3.55, 0.3), "y"],   # lamba ipi
+	[Vector3(0.5, 0.3, 0.5), METAL, Vector3(0, 3, 0.3), "k"],   # lamba başlığı
+	[Vector3(0.4, 0.4, 0.4), LAMP_GLOW, Vector3(0, 2.75, 0.3), "s"],   # ampul
+	[Vector3(0.18, 0.18, 0.18), LAMP_GLOW, Vector3(0, 2.75, 0.3), "s"],
+	[Vector3(1, 0.8, 0.8), WOOD, Vector3(-3.4, 0.4, -2), "b", Vector3(0, 20, 0)],   # sandık
+	[Vector3(1.04, 0.1, 0.84), WOOD_LIGHT, Vector3(-3.4, 0.82, -2), "b", Vector3(0, 20, 0)],   # sandık kapağı
+	[Vector3(0.9, 0.7, 0.7), WOOD, Vector3(3.5, 0.35, -1.6), "b", Vector3(0, -15, 0)],
+	[Vector3(0.94, 0.1, 0.74), WOOD_LIGHT, Vector3(3.5, 0.72, -1.6), "b", Vector3(0, -15, 0)],
+	[Vector3(1.4, 0.3, 1), HAY, Vector3(-3.1, 0.15, 1.2), "s"],   # saman yatak
+	[Vector3(1, 0.22, 0.7), HAY_BAND, Vector3(-3, 0.3, 1.1), "s"],
+	[Vector3(0.5, 0.3, 0.4), ROCK_C, Vector3(2.9, 0.12, 1.9), "s"],   # taşlar
+	[Vector3(0.3, 0.2, 0.28), ROCK_C, Vector3(3.3, 0.08, 2.3), "s"],
+	[Vector3(0.4, 0.25, 0.35), ROCK_C, Vector3(-1.6, 0.1, -3.3), "s"],
+]
+

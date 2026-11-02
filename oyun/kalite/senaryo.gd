@@ -5,10 +5,12 @@ extends SceneTree
 
 const Secim := preload("res://secim.gd")
 const END_FRAME := 690
+const SOFRA_END_FRAME := 1000  # kazan_sofra: giriş + en çok 10 sn şölen kendiliğinden bitmeli
 const NAMES := {isim_bos = "", isim_uzun = "Çok-uzun-bir-isim-123", isim_turkce = "Şeker Ğığİ"}
 
 var ad := "menu"
 var f := 0
+var end_frame := END_FRAME
 var reloaded := false  # tekrar_enter / esc_menu: sahne bir kez yenilendi mi
 var saw_dog := false
 var saw_goose := false
@@ -21,6 +23,8 @@ func _initialize() -> void:
 		if a.begins_with("--senaryo="):
 			ad = a.trim_prefix("--senaryo=")
 	Secim.ayar_path = "user://test_ayar.cfg"
+	if ad == "kazan_sofra":
+		end_frame = SOFRA_END_FRAME
 	match ad:  # senaryo kendi koşulunu kurar, dışarıdaki betiğe güvenmez
 		"bozuk_cfg": write_cfg("[secim\nskin = = ][[[ çöp")
 		"skor_bos": write_cfg("")
@@ -39,6 +43,8 @@ func _process(_d: float) -> bool:
 	if f > 10:
 		frame_ms.append((now - last_us) / 1000.0)
 	last_us = now
+	if ad == "dokunma" and f == 2:
+		root.size = Vector2i(1280, 720)  # ekransızda pencere 64x64 çıkıyor; HUD paneli ekranı kaplamasın
 	var m = current_scene
 	if m == null:
 		return false
@@ -58,10 +64,17 @@ func _process(_d: float) -> bool:
 	if f == 62:
 		key(KEY_SPACE, false)
 	if f == 120 and m.state == "run":
-		if ad == "kazan":
+		if ad in ["kazan", "kazan_sofra"]:
 			m.rabbit.position.z = -590.0
 		elif ad in ["yakalan", "tekrar_enter", "esc_menu", "skor_dolu", "skor_bos", "bozuk_cfg"]:
 			m.gap = -1.0
+	if ad == "dokunma" and m.state == "run":
+		m.gap = m.GAP_MAX
+		touch_test(m)
+	if f == 300 and ad == "kazan":  # şölen sürerken Esc: Geç gibi paneli hemen açar
+		if m.state != "feast":
+			return fail("şölen başlamadı (durum %s)" % m.state)
+		key(KEY_ESCAPE, true)
 	if ad == "bolgeler" and m.state == "run":  # 190 m'den 520 m'yi geçecek hızla: köpek, kaz ve tüm olaylar
 		if f == 120:
 			m.rabbit.position.z = -190.0
@@ -77,9 +90,58 @@ func _process(_d: float) -> bool:
 	if f == 302:
 		key(KEY_ENTER, false)
 		key(KEY_ESCAPE, false)
-	if f == END_FRAME:
+	if f == end_frame:
 		check(m)
 	return false
+
+
+func touch(at: Vector2, down: bool) -> void:
+	var e := InputEventScreenTouch.new()
+	e.index = 0
+	e.position = at
+	e.pressed = down
+	Input.parse_input_event(e)
+
+
+func drag(at: Vector2, from: Vector2) -> void:
+	var e := InputEventScreenDrag.new()
+	e.index = 0
+	e.position = at
+	e.relative = at - from
+	Input.parse_input_event(e)
+
+
+# Yapay dokunmalar: basınca hemen eylem (bırakmayı beklemez), kaydırma basılıyken atılır, bırakınca ek eylem yok.
+func touch_test(m) -> void:
+	var sz: Vector2 = m.get_viewport().get_visible_rect().size
+	var mid := Vector2(sz.x * 0.5, sz.y * 0.5)
+	match f:
+		125: touch(mid, true)
+		128:
+			if m.ry <= 0.0:
+				fail("orta dokunuş basınca zıplatmadı")
+		130: touch(mid, false)
+		135: touch(Vector2(sz.x * 0.1, 40.0), true)  # HUD paneli altında
+		138:
+			if m.lane != 0:
+				fail("sol dokunuş basınca şeridi değiştirmedi (şerit %d)" % m.lane)
+		140: touch(Vector2(sz.x * 0.1, 40.0), false)
+		145: touch(Vector2(sz.x * 0.9, mid.y), true)
+		148:
+			if m.lane != 1:
+				fail("sağ dokunuş basınca şeridi değiştirmedi (şerit %d)" % m.lane)
+		150: touch(Vector2(sz.x * 0.9, mid.y), false)
+		155:
+			m.carrots = 3
+			touch(Vector2(sz.x * 0.9, mid.y), true)  # sağ üçte birde basar, şerit 2'ye geçer; sonra aşağı kayar
+		156: drag(Vector2(sz.x * 0.9, mid.y + sz.y * 0.3), Vector2(sz.x * 0.9, mid.y))
+		158:
+			if m.dash_t <= 0.0 or m.carrots != 0:
+				fail("aşağı kaydırma basılıyken atılmadı (dash_t %.2f, havuç %d)" % [m.dash_t, m.carrots])
+		160: touch(Vector2(sz.x * 0.9, mid.y + sz.y * 0.3), false)
+		163:
+			if m.lane != 2:
+				fail("bırakma ek eylem yaptı (şerit %d)" % m.lane)
 
 
 func click(at: Vector2) -> void:
@@ -101,7 +163,7 @@ func key(k: Key, down: bool) -> void:
 
 
 func check(m) -> bool:
-	var want := {menu = "menu", menu_enter = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
+	var want := {menu = "menu", kazan_sofra = "win", dokunma = "run", menu_enter = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
 			isim_bos = "run", isim_uzun = "run", isim_turkce = "run", bolgeler = "run", fare_bos = "run", bozuk_cfg = "over", skor_bos = "over", skor_dolu = "over"}
 	if not want.has(ad):
 		return fail("bilinmeyen senaryo")
@@ -115,7 +177,9 @@ func check(m) -> bool:
 		return fail("isim '%s', beklenen '%s'" % [m.rabbit_name, names[ad]])
 	if ad == "bolgeler" and not (saw_dog and saw_goose and m.prev_dist >= 520.0):
 		return fail("bölgeler eksik: köpek %s, kaz %s, mesafe %d" % [saw_dog, saw_goose, m.prev_dist])
-	if ad in ["kazan", "yakalan", "skor_bos", "skor_dolu", "bozuk_cfg"] and Secim.load_scores().is_empty():
+	if ad == "kazan_sofra" and (m.feast_bites < 1 or m.feast_piles_list.size() != m.feast_piles(m.carrots_total)):
+		return fail("şölen yenmedi: ısırık %d, yığın %d" % [m.feast_bites, m.feast_piles_list.size()])
+	if ad in ["kazan", "kazan_sofra", "yakalan", "skor_bos", "skor_dolu", "bozuk_cfg"] and Secim.load_scores().is_empty():
 		return fail("skor kaydedilmedi")
 	if ad == "skor_bos" and Secim.load_scores().size() != 1:
 		return fail("boş tabloya tek kayıt eklenmeliydi")

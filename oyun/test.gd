@@ -35,6 +35,11 @@ func _init() -> void:
 		[Secim.score_lines([], -1), "henüz yok", "boş tablo yazısı"],
 		[[Main.near_lanes(0), Main.near_lanes(1), Main.near_lanes(2)], [[1], [0, 2], [1]], "kenar şeridin tek komşusu var"],
 		[Secim.clean_name("a\nb", "x"), "a b", "isimdeki satır sonu boşluk olur"],
+		[[Main.feast_piles(0), Main.feast_piles(9), Main.feast_piles(1000), Main.feast_piles(-5)], [4, 7, 12, 4], "şölen yığın sayısı havuca bağlı, 4..12"],
+		[[Main.touch_action(10, 300), Main.touch_action(150, 300), Main.touch_action(290, 300), Main.touch_action(150, 300, Vector2(5, 80))], ["left", "jump", "right", "dash"], "dokunma: bölgeler ve aşağı kaydırma"],
+		[[Main.touch_action(10, 300, Vector2(0, 30)), Main.touch_action(10, 300, Vector2(90, 80)), Main.touch_action(150, 300, Vector2(0, 50), 40.0)], ["left", "left", "dash"], "kısa ya da yatay kaydırma atıl değil, eşik ekrana bağlı"],
+		[[Main.swipe_min(200), Main.swipe_min(844), Main.swipe_min(2000)], [40.0, 67.52, 90.0], "kaydırma eşiği ekran yüksekliğinin %8'i, 40..90"],
+		[[Main.near_miss(1, 0.28, 1, false), Main.near_miss(1, 0.28, 1, false, Main.NEAR_TIME_TOUCH)], [false, true], "telefonda kıl payı penceresi geniş"],
 	]
 	var failed := 0
 	for c in cases:

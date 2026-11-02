@@ -5,7 +5,7 @@
 
 ## 1. Hikaye
 
-Yabani bir tavşan, çiftçi Halil'in tarlasından havuç çalıyor. Halil onu fark edip peşine düşüyor ve eline geçen her şeyi fırlatıyor: kova, tırmık, yumurta, lahana. Tavşanın derdi tek: havuçlarla birlikte yuvasına sağ salim varmak. Yakalanırsa Halil onu çuvala koyuyor.
+Yabani bir tavşan, çiftçi Halil'in tarlasından havuç çalıyor. Halil onu fark edip peşine düşüyor ve eline geçen her şeyi fırlatıyor: kova, tırmık, yumurta, lahana. Tavşanın derdi tek: havuçlarla birlikte yuvasına sağ salim varmak. Yakalanırsa Halil onu çuvala koyuyor. Varırsa mutlu son: tavşan yuvaya girer, sıcak toprak odada çalınan havuçlar ve turp, mısır, domates, patlıcan, lahana yığınlarıyla şölen yapar (yuva finali, `PLAN-yuva-finali.md`).
 
 Ton: komik, sevimli, cezalandırıcı değil. Halil kötü adam değil, öfkeli bir çiftçi.
 
@@ -93,6 +93,8 @@ Kaynak: `PLAN-mekanikler.md` bölüm 1 (2026-11-02 eleştirisi).
 ## 8. Yol haritası
 
 **Yapıldı:** `PLAN-mekanikler.md` M1–M5 ve T1–T3, `PLAN-grafik.md` G1–G5 ve G7, `PLAN-karakter-secimi.md`, `PLAN-bolum1.md`. Bekleyen: G6 (kontur, kullanıcı kararı).
+
+**Yuva finali (planlandı, modeller hazır):** kazanınca yeni durum `"feast"`: tavşan yuvaya girer, dokunma/tuşla (yoksa otomatik) yığınları yer, en çok 10 sn, Esc/Geç ile atlanır; puan formülü değişmez, bolluk havuç sayısıyla artar (4-12 yığın). Modeller `modeller.gd` içinde: `VEG_TURNIP`, `VEG_CORN`, `VEG_TOMATO`, `VEG_EGGPLANT`, `VEG_CABBAGE`, `CARROT_PILE`, `BURROW_INSIDE` (sözleşme dosyanın başında). Sekans kodu Geliştiricide.
 
 **Ardından:** Ayar turu (kullanıcı oynar; hız, zıplama, atış sıklığı, atılım ve kıl payı değerleri ayarlanır). Açılış sahnesi (tavşan havuç kemirir → "HEY!" → 3-2-1) yapıldı.
 

@@ -19,7 +19,11 @@ const FARM_CHANCE := 0.3                    # her sırada yol kenarına bina ç�
 const COMPAT_SUN := 0.3
 const COMPAT_AMBIENT := 0.1
 const COMPAT_LIGHT_SCALE := 0.3
-const SWIPE_MIN := 60.0                    # bu kadar px aşağı kaydırma = atıl (telefon)
+const SWIPE_MIN := 60.0                    # kaydırma eşiği yedeği (px); gerçekte ekran yüksekliğinin %8'i, 40..90
+const JUMP_BUFFER_TOUCH := 0.18            # telefonda parmak gecikmesi için daha cömert
+const NEAR_TIME_TOUCH := 0.3
+const COMPAT_SCALE_TOUCH := 0.65           # tarayıcı + dokunmatik: pil/ısınma (telefonda ölçülmedi)
+const HINT_TIME := 3.0                     # ilk koşuda dokunma bölgesi ipucu süresi
 const FARM_FREE_Z := 45.0                  # tavşan bu kadar ilerleyince menü çiftliği silinir (m)
 const COMPAT_AHEAD := 60.0                 # tarayıcıda sıra ve dekor bu kadar ileriye kurulur (masaüstü 80)
 const COMPAT_SHADOW_DIST := 28.0
@@ -40,6 +44,18 @@ const GOOSE_CHANCE := 0.5  # kümes bölgesinde sıra başına kaz olasılığı
 const GOOSE_X := 3.6       # kazlar yol kenarında durur, çarpmaz
 const WIN_BONUS := 200
 const END_LOCK := 0.6      # bitişte tuşlar bu kadar kilitli: zıplarken yakalanan oyuncu puanı görmeden geçmesin
+
+# Yuvada şölen (PLAN-yuva-finali.md): kazanınca yuvaya girilir, ısırık = dokunma/tuş, işlem yoksa otomatik
+const FEAST_POS := Vector3(300, 0, 0)  # yuva içi oda, yoldan uzakta
+const FEAST_MAX := 10.0     # girişten panele en çok bu kadar sn
+const FEAST_ENTER := 1.0    # yuvaya sıçrayış; sonunda ekran kararır ve oda açılır
+const FEAST_EAT_AT := 1.4   # yeme başlangıcı
+const FEAST_AUTO := 0.7     # dokunma yoksa otomatik ısırık aralığı
+const FEAST_BITE_GAP := 0.12  # dokunma + emüle fare çift ısırık saymasın
+const FEAST_BITES := 3      # bir yığın kaç ısırıkta biter
+const FEAST_END_WAIT := 0.5 # "Mmm!" süresi (FEAST_MAX içinde)
+const FEAST_BG := Color(0.3, 0.2, 0.14)  # odanın dışı: koyu toprak (gökyüzü görünmesin)
+const SFX_RATE := 22050.0
 
 static var go_menu := true  # sahne yenilense de korunur: bitişte Enter menüyü atlar, Esc menüye döner
 
@@ -141,6 +157,29 @@ var halil: Node3D
 var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"  # tarayıcı sürümü
 var farm_nodes: Array[Node3D] = []  # menü çiftliği: koşuda geride kalınca silinir
 var touch_from := {}   # parmak indeksi → dokunma başlangıcı (telefon)
+var touch_done := {}   # parmak indeksi → bu dokunma kaydırma olarak harcandı mı
+var touch := DisplayServer.is_touchscreen_available()  # ilk dokunuşta da true olur
+var jump_buf := JUMP_BUFFER
+var near_win := NEAR_TIME
+var vibrate_on := true
+static var hint_shown := false  # sahne yenilense de ipucu oturumda bir kez
+var hint_box: Control
+var end_text := ""
+var feast_root: Node3D
+var feast_t := 0.0
+var feast_bites := 0
+var feast_last := -9.0
+var feast_swapped := false
+var feast_done_t := -1.0   # >= 0: yeme bitti, "Mmm!" sayacı
+var feast_idx := 0
+var feast_piles_list := []  # {node, left}
+var feast_goal := Vector3.ZERO
+var feast_from := Vector3.ZERO  # giriş sıçrayışının başlangıcı (rabbit/cam)
+var feast_cam_from := Vector3.ZERO
+var feast_fade: ColorRect
+var skip_btn: Button
+var sfx: AudioStreamPlayer
+var sfx_buf := []  # önceden üretilmiş kıtır sesleri (AudioStreamWAV)
 var scenery: Node3D  # zemin, yol ve tepeler: tavşanla birlikte kayar
 var cam: Camera3D
 var hud: Label
@@ -175,8 +214,25 @@ static func can_dash(carrot_count: int, dash_left: float) -> bool:
 
 
 # Iskalanan atış kıl payı mı? Hedef şeridi az önce terk ettin ya da tam üstünden atladın.
-static func near_miss(left_lane: int, left_age: float, target_lane: int, airborne_over: bool) -> bool:
-	return airborne_over or (left_lane == target_lane and left_age <= NEAR_TIME)
+static func near_miss(left_lane: int, left_age: float, target_lane: int, airborne_over: bool, window := NEAR_TIME) -> bool:
+	return airborne_over or (left_lane == target_lane and left_age <= window)
+
+
+# Yuvadaki sofra: toplanan havuç kadar yığın (4..12). Puan formülüne girmez, yalnız görsel bolluk.
+static func feast_piles(carrots_total: int) -> int:
+	return clampi(4 + carrots_total / 3, 4, 12)
+
+
+# Dokunuşun eylemi: "dash" (aşağı kaydırma), "left" / "jump" / "right" (ekranın üç bölgesi).
+static func touch_action(x: float, width: float, swipe := Vector2.ZERO, min_swipe := SWIPE_MIN) -> String:
+	if swipe.y > min_swipe and swipe.y > absf(swipe.x):
+		return "dash"
+	return ["left", "jump", "right"][clampi(int(3.0 * x / maxf(width, 1.0)), 0, 2)]
+
+
+# Kaydırma eşiği ekran yüksekliğine bağlı (yüksek DPI'da 60 px çok kolay, küçük ekranda zor).
+static func swipe_min(height: float) -> float:
+	return clampf(height * 0.08, 40.0, 90.0)
 
 
 # Bir şeridin yoldaki komşu şeritleri.
@@ -328,7 +384,27 @@ func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
 	return root
 
 
+# Telefon ayarları (menüsü yok; ayar.cfg [ayar] bölümü: titresim = true/false, fps = 30/60). Okuma hatası varsayılana düşer.
+func load_settings() -> void:
+	var cf := Secim.config()
+	var v = cf.get_value("ayar", "titresim", true)
+	vibrate_on = v if v is bool else true
+	var fps = cf.get_value("ayar", "fps", 0)
+	if fps is int and fps in [30, 60]:
+		Engine.max_fps = fps
+
+
+# Parmak gecikmesi masaüstü tuşundan fazla: telefonda tampon ve kıl payı penceresi biraz cömert (masaüstü sayıları aynı).
+func apply_touch() -> void:
+	touch = true
+	jump_buf = JUMP_BUFFER_TOUCH
+	near_win = NEAR_TIME_TOUCH
+
+
 func _ready() -> void:
+	load_settings()
+	if touch:
+		apply_touch()
 	var horizon := Color(1.0, 0.72, 0.48)
 	var sky_mat := ProceduralSkyMaterial.new()
 	sky_mat.sky_top_color = Color(0.42, 0.55, 0.85)
@@ -356,7 +432,7 @@ func _ready() -> void:
 	env.adjustment_contrast = 1.05
 	get_viewport().msaa_3d = Viewport.MSAA_2X if compat else Viewport.MSAA_4X
 	if compat:
-		get_viewport().scaling_3d_scale = COMPAT_SCALE
+		get_viewport().scaling_3d_scale = COMPAT_SCALE_TOUCH if touch else COMPAT_SCALE
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -489,6 +565,46 @@ func make_hud() -> void:
 	pop_label.rotation_degrees = -6
 	pop_label.modulate.a = 0.0
 	layer.add_child(pop_label)
+	hint_box = HBoxContainer.new()  # ilk koşuda dokunma bölgeleri (soluk)
+	hint_box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hint_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint_box.add_theme_constant_override("separation", 0)
+	hint_box.modulate.a = 0.0
+	for t in ["◀", "▲\nZIPLA", "▶"]:
+		var cell := Label.new()
+		cell.text = t
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cell.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cell.add_theme_font_size_override("font_size", 64)
+		cell.add_theme_color_override("font_color", Color.WHITE)
+		cell.add_theme_color_override("font_outline_color", HUD_TEXT)
+		cell.add_theme_constant_override("outline_size", 10)
+		hint_box.add_child(cell)
+	layer.add_child(hint_box)
+	feast_fade = ColorRect.new()  # yuvaya girerken kararma
+	feast_fade.color = Color(0.08, 0.05, 0.03, 0.0)
+	feast_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	feast_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	feast_fade.visible = false
+	layer.add_child(feast_fade)
+	skip_btn = Button.new()  # sağ altta büyük "Geç" (parmak hedefi >= 56 px)
+	skip_btn.text = "Geç ▶"
+	skip_btn.theme = ui_theme()
+	skip_btn.add_theme_font_size_override("font_size", 32)
+	skip_btn.focus_mode = Control.FOCUS_NONE  # Enter/Space odaklı düğmeyi basmasın
+	skip_btn.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
+	skip_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	skip_btn.offset_left = -200
+	skip_btn.offset_top = -96
+	skip_btn.offset_right = -24
+	skip_btn.offset_bottom = -24
+	skip_btn.visible = false
+	skip_btn.pressed.connect(feast_finish)
+	layer.add_child(skip_btn)
+	hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE  # HUD dokunmayı yutmasın: telefonda sol üst bölge de oyuna gitsin
+	for c in hud_panel.find_children("*", "Control", true, false):
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
 # Menünün görünümü: HUD ile aynı yuvarlak krem paneller, turuncu düğme.
@@ -551,11 +667,13 @@ func fill_rows(z: float) -> void:
 # Açılışta herhangi bir tuş ya da tıklama açılışı atlar. Bitişte Enter tekrar koşturur, Esc menüye döner
 # (Space yok; Enter da zıplattığı için bitişte END_LOCK kadar kilit var, bkz. finish()).
 func _unhandled_input(e: InputEvent) -> void:
-	if state == "run" and e is InputEventScreenTouch:  # telefon: bırakınca karar verilir (dokunuş mu, aşağı kaydırma mı)
-		if e.pressed:
-			touch_from[e.index] = e.position
-		else:
-			touch_control(e.position.x, e.position - touch_from.get(e.index, e.position))
+	if e is InputEventScreenTouch and not touch:
+		apply_touch()  # masaüstü sanılan ama dokunmatik cihaz
+	if state == "feast":
+		feast_input(e)
+		return
+	if state == "run" and (e is InputEventScreenTouch or e is InputEventScreenDrag):
+		touch_run(e)
 		return
 	if not e.is_pressed() or e.is_echo():
 		return
@@ -571,16 +689,41 @@ func _unhandled_input(e: InputEvent) -> void:
 			get_tree().reload_current_scene()
 
 
-# Telefon: aşağı kaydırma havuçla atıldırır; dokunuşta ekranın sol üçte biri sola, sağ üçte biri sağa geçer, ortası zıplatır
-# (görünmez bölgeler). swipe = parmağın dokunma ile bırakma arasındaki yer değiştirmesi (px).
-func touch_control(x: float, swipe := Vector2.ZERO) -> void:
-	if swipe.y > SWIPE_MIN and swipe.y > absf(swipe.x):
+# Telefon: basınca hemen eylem (sol/orta/sağ üçte bir = sola / zıpla / sağa). Aşağı kaydırma parmak basılıyken eşiği geçince atılır
+# ve o dokunma bir daha eylem yapmaz. Bedeli: kaydırma bir bölgede başlarsa o bölgenin eylemi basma anında zaten olmuştur.
+func touch_run(e: InputEvent) -> void:
+	var size := get_viewport().get_visible_rect().size
+	if e is InputEventScreenTouch:
+		if e.pressed:
+			touch_from[e.index] = e.position
+			touch_done[e.index] = false
+			match touch_action(e.position.x, size.x):
+				"left": set_lane(maxi(lane - 1, 0))
+				"jump": jump_t = jump_buf
+				_: set_lane(mini(lane + 1, LANES.size() - 1))
+		else:
+			touch_from.erase(e.index)
+			touch_done.erase(e.index)
+	elif touch_from.has(e.index) and touch_done.get(e.index) == false \
+			and touch_action(e.position.x, size.x, e.position - touch_from[e.index], swipe_min(size.y)) == "dash":
+		touch_done[e.index] = true
 		try_dash()
+
+
+func vibrate(ms: int) -> void:
+	if vibrate_on and touch and OS.has_feature("web"):
+		JavaScriptBridge.eval("try{navigator.vibrate&&navigator.vibrate(%d)}catch(e){}" % ms)  # iOS'ta yok: sessiz geçer
+
+
+# Dokunmatik cihazda ilk koşuda üç bölge 3 sn soluk görünür (ayar.cfg [ayar] ipucu_hep = true ile her koşuda).
+func show_hint() -> void:
+	if not touch or (hint_shown and Secim.config().get_value("ayar", "ipucu_hep", false) != true):
 		return
-	match int(3.0 * x / get_viewport().get_visible_rect().size.x):
-		0: set_lane(maxi(lane - 1, 0))
-		1: jump_t = JUMP_BUFFER
-		_: set_lane(mini(lane + 1, LANES.size() - 1))
+	hint_shown = true
+	var tw := hint_box.create_tween()
+	tw.tween_property(hint_box, "modulate:a", 0.3, 0.3)
+	tw.tween_interval(HINT_TIME)
+	tw.tween_property(hint_box, "modulate:a", 0.0, 0.5)
 
 
 func try_dash() -> void:
@@ -588,6 +731,7 @@ func try_dash() -> void:
 		carrots -= DASH_COST
 		dash_t = DASH_TIME
 		say("Atıl!")
+		vibrate(40)
 
 
 func pop(text: String, color: Color) -> void:
@@ -777,6 +921,7 @@ func hurt(text: String) -> void:
 	gap -= HIT_COST
 	blink_t = BLINK_TIME
 	say(text)
+	vibrate(30)
 	burst(rabbit.position + Vector3(0, 0.7, 0), STAR_C, 10)  # vurulma yıldızları
 
 
@@ -789,6 +934,9 @@ func _process(delta: float) -> void:
 		return
 	if state == "over" or state == "win":
 		return  # tuşlar _unhandled_input'ta
+	if state == "feast":
+		run_feast(delta)
+		return
 	if state == "intro":
 		fill_rows(0.0)
 		for c in crossed(INTRO_CUES.keys(), intro_t, intro_t + delta):
@@ -806,6 +954,7 @@ func _process(delta: float) -> void:
 		rabbit.rotation.y = 0.0
 		halil.position.y = 1.0
 		state = "run"
+		show_hint()
 		return  # açılışı atlayan tuş bu karede zıplatmasın ya da şerit değiştirmesin
 
 	clock += delta
@@ -815,7 +964,7 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("ui_right"):
 		set_lane(mini(lane + 1, LANES.size() - 1))
 	if Input.is_action_just_pressed("ui_up") or Input.is_action_just_pressed("ui_accept"):
-		jump_t = JUMP_BUFFER
+		jump_t = jump_buf
 	if jump_t > 0.0 and ry == 0.0:
 		jump_t = 0.0
 		vy = JUMP_VY
@@ -909,6 +1058,7 @@ func run_items(delta: float, p: Vector3, r: Vector3, t: float) -> void:
 				carrots += 1
 				carrots_total += 1
 				burst(n.position, M.CARROT_C, 12)  # havuç parıltısı
+				vibrate(15)
 				var tw := n.create_tween()
 				tw.tween_property(n, "scale", Vector3.ONE * 1.6, POP_TIME)
 				tw.tween_property(n, "scale", Vector3.ONE * 0.01, POP_TIME)
@@ -946,7 +1096,7 @@ func run_throws(delta: float, p: Vector3, r: Vector3, spd: float) -> void:
 			elif th.item == "tırmık":  # sadece ıskalanınca saplanır; isabette tavşanın altına düşüp ikinci kez çarptırırdı
 				items.append({node = model(M.RAKE_STUCK, th.to), kind = "hit", h = 0.6})
 			else:
-				if near_miss(lane_left, clock - lane_left_t, th.lane, hits(Vector3(r.x, 0, r.z), th.to.x, th.to.z, THROW_H)):
+				if near_miss(lane_left, clock - lane_left_t, th.lane, hits(Vector3(r.x, 0, r.z), th.to.x, th.to.z, THROW_H), near_win):
 					gap = minf(gap + NEAR_BONUS, GAP_MAX)
 					say("Kıl payı!")
 					pop("Kıl payı!", HUD_WARN)
@@ -980,18 +1130,228 @@ func update_hud(dist: float) -> void:
 	msg_label.modulate.a = 1.0 if msg_t > 0.0 and state == "run" else 0.0  # metni silmek paneli zıplatırdı
 
 
-# Koşu bitti: puanı tabloya yaz, bitiş panelini göster.
+# Koşu bitti: puanı tabloya yaz. Kazanılırsa yuvaya girilip şölen verilir (feast), sonra panel; kaybedilirse panel hemen.
 func finish(won: bool, dist: float) -> void:
-	state = "win" if won else "over"
-	set_process_unhandled_input(false)
-	get_tree().create_timer(END_LOCK).timeout.connect(set_process_unhandled_input.bind(true))
 	blind_rect.visible = false  # kova karartması bitiş panelini örtmesin
 	bucket.visible = false
 	run_dust.emitting = false
 	var pts := score(dist, carrots_total, won)
 	var entry := {isim = rabbit_name, puan = pts}
 	var table := Secim.insert_score(Secim.load_scores(), entry)
-	Secim.save("skor", {liste = table})
-	var title := ("%s yuvaya daldı!\nHalil eli boş döndü." % rabbit_name) if won else ("Halil yakaladı: %s" % rabbit_name)
+	Secim.save("skor", {liste = table})  # şölen yarıda kapansa da puan kaybolmaz
+	var title := ("%s yuvada şölen yaptı!\nHalil eli boş döndü." % rabbit_name) if won else ("Halil yakaladı: %s" % rabbit_name)
+	end_text = "%s\nPuan: %d\n\nEn iyiler\n%s\n\nEnter / dokun: tekrar koş    Esc: menü" % [title, pts, Secim.score_lines(table, table.find_custom(func(e): return is_same(e, entry)))]  # aynı puanlı eski kayıt değil, bu kayıt
+	if won:
+		begin_feast()
+	else:
+		show_end(false)
+
+
+func show_end(won: bool) -> void:
+	state = "win" if won else "over"
+	set_process_unhandled_input(false)
+	get_tree().create_timer(END_LOCK).timeout.connect(set_process_unhandled_input.bind(true))
+	if pop_tw:
+		pop_tw.kill()  # "Mmm!" / "Ham!" panelin üstünde kalmasın
+	pop_label.modulate.a = 0.0
 	end_box.visible = true
-	end_label.text = "%s\nPuan: %d\n\nEn iyiler\n%s\n\nEnter / dokun: tekrar koş    Esc: menü" % [title, pts, Secim.score_lines(table, table.find_custom(func(e): return is_same(e, entry)))]  # aynı puanlı eski kayıt değil, bu kayıt
+	end_label.text = end_text
+
+
+# --- Yuvada şölen ---
+
+func mconst(name: String) -> Variant:  # Tasarımcının modeli yoksa null: kod kutu yedeğine düşer
+	var sc: Script = M
+	return sc.get_script_constant_map().get(name)
+
+
+func begin_feast() -> void:
+	state = "feast"
+	feast_t = 0.0
+	feast_bites = 0
+	feast_last = -9.0
+	feast_done_t = -1.0
+	feast_swapped = false
+	feast_from = rabbit.position
+	feast_cam_from = cam.position
+	for th in throws:  # havada asılı kalmasın
+		th.node.visible = false
+		th.marker.visible = false
+	skip_btn.visible = true
+	feast_fade.visible = true
+	hint_box.visible = false  # dokunma ipucu şölene taşmasın
+	make_sfx()
+
+
+func feast_input(e: InputEvent) -> void:
+	if not e.is_pressed() or e.is_echo():
+		return
+	if (e is InputEventKey and e.keycode == KEY_ESCAPE) or (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_B):
+		feast_finish()
+	elif e is InputEventKey or e is InputEventScreenTouch or e is InputEventJoypadButton or (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT):
+		feast_bite()
+
+
+func run_feast(delta: float) -> void:
+	feast_t += delta
+	if feast_t < FEAST_ENTER:  # yuva ağzına sıçra, kamera yaklaşsın, ekran kararsın
+		var k := feast_t / FEAST_ENTER
+		var mouth := Vector3(0, 0.3, -GOAL - 1.5)
+		rabbit.position = feast_from.lerp(mouth, k) + Vector3(0, sin(k * PI) * 0.8, 0)
+		rabbit.scale = Vector3.ONE * lerpf(1.0, 0.5, k)
+		cam.position = feast_cam_from.lerp(Vector3(0, 2.5, -GOAL + 4), smoothstep(0.0, 1.0, k))
+		cam.look_at(Vector3(0, 0.6, -GOAL - 2))
+		feast_fade.color.a = smoothstep(0.6, 1.0, k)
+		return
+	if not feast_swapped:
+		swap_to_room()
+	feast_fade.color.a = maxf(0.0, 1.0 - (feast_t - FEAST_ENTER) / (FEAST_EAT_AT - FEAST_ENTER))
+	feast_fade.visible = feast_fade.color.a > 0.0
+	var eating := feast_done_t < 0.0
+	if eating and feast_t >= FEAST_EAT_AT and feast_t - feast_last >= FEAST_AUTO:
+		feast_bite()  # kimse dokunmasa da yer
+	if eating and feast_t >= FEAST_MAX - FEAST_END_WAIT:
+		end_eating()
+	if feast_done_t >= 0.0:
+		feast_done_t += delta
+		body(rabbit).rotation.z = sin(feast_done_t * 20.0) * 0.15  # "Mmm!" sallanır
+		if feast_done_t >= FEAST_END_WAIT:
+			feast_finish()
+			return
+	if feast_idx < feast_piles_list.size():
+		var d: Vector3 = feast_piles_list[feast_idx].pos - rabbit.position
+		rabbit.rotation.y = lerp_angle(rabbit.rotation.y, atan2(-d.x, -d.z), 1.0 - exp(-8.0 * delta))
+	rabbit.position = rabbit.position.lerp(feast_goal, 1.0 - exp(-6.0 * delta))
+	rabbit.scale = rabbit.scale.lerp(Vector3.ONE, SQUASH_BACK * delta)
+
+
+# Dünyayı (zemin, çiftlik, öğeler, Halil) gizle: yalnız oda çizilsin. Tavşan, kamera, ışıklar ve parçacık havuzu kalır.
+func swap_to_room() -> void:
+	feast_swapped = true
+	build_feast_room()
+	for c in get_children():
+		if c is Node3D and c != rabbit and c != cam and c != feast_root and not c is Light3D and not c is GPUParticles3D:
+			c.visible = false
+	hud_panel.visible = false
+	rabbit.scale = Vector3.ONE
+	rabbit.rotation.y = 0.0
+	rabbit.position = FEAST_POS + Vector3(0, 0.3, 0.8)
+	cam.fov = 55.0
+	cam.position = FEAST_POS + Vector3(0, 4.2, 8.0)  # oda +z'den açık; tavan kameranın altında kalır
+	cam.look_at(FEAST_POS + Vector3(0, 0.2, -0.5))
+	feast_idx = 0
+	feast_goal = rabbit.position
+	set_feast_goal()
+	pop("Dokun, ye!", HUD_WARN)
+
+
+func build_feast_room() -> void:
+	feast_root = Node3D.new()
+	feast_root.position = FEAST_POS
+	add_child(feast_root)
+	box(Vector3(90, 0.2, 90), FEAST_BG, Vector3(0, -0.3, 0), feast_root)  # arkalık: sky ve yeşil zemin görünmesin (Compatibility'de BG_COLOR işe yaramadı)
+	box(Vector3(90, 50, 0.4), FEAST_BG, Vector3(0, 20, -14), feast_root)
+	var inside: Variant = mconst("BURROW_INSIDE")
+	if inside is Array:
+		model(inside, Vector3.ZERO, feast_root)
+	else:  # yedek: toprak zemin ve üç duvar
+		box(Vector3(18, 0.4, 18), M.DIRT, Vector3(0, -0.2, 0), feast_root)
+		box(Vector3(18, 6, 0.6), M.DIRT_DARK, Vector3(0, 3, -9), feast_root)
+		box(Vector3(0.6, 6, 18), M.DIRT_DARK, Vector3(-9, 3, 0), feast_root)
+		box(Vector3(0.6, 6, 18), M.DIRT_DARK, Vector3(9, 3, 0), feast_root)
+	var kinds := []
+	for n in ["CARROT_PILE", "VEG_CABBAGE", "VEG_TURNIP", "VEG_CORN", "VEG_TOMATO", "VEG_EGGPLANT"]:
+		var v: Variant = mconst(n)
+		if v is Array:
+			kinds.append(v)
+	if kinds.is_empty():
+		kinds = [M.CARROT, M.CABBAGE]
+	var count := feast_piles(carrots_total)
+	feast_piles_list.clear()
+	for i in count:
+		var a := TAU * i / count + 0.35
+		var local := Vector3(sin(a) * 3.3, 0, -0.6 - cos(a) * 2.3)  # oda 10 x 9 m (BURROW_INSIDE)
+		var pile := Node3D.new()
+		pile.position = local
+		feast_root.add_child(pile)
+		var kind: Array = kinds[i % kinds.size()]
+		for o in ([Vector3.ZERO] if kind == mconst("CARROT_PILE") else [Vector3(-0.35, 0, 0.1), Vector3(0.3, 0, 0.15), Vector3(0, 0, -0.3)]):  # havuç yığını zaten yığın
+			model(kind, o, pile).scale = Vector3.ONE * 1.4
+		feast_piles_list.append({node = pile, left = FEAST_BITES, pos = FEAST_POS + local})
+
+
+func set_feast_goal() -> void:
+	if feast_idx < feast_piles_list.size():
+		var pos: Vector3 = feast_piles_list[feast_idx].pos
+		feast_goal = Vector3(pos.x, 0.3, pos.z).lerp(FEAST_POS + Vector3(0, 0.3, -0.6), 0.3)
+
+
+func feast_bite() -> void:
+	if state != "feast" or not feast_swapped or feast_done_t >= 0.0 or feast_t < FEAST_EAT_AT or feast_t - feast_last < FEAST_BITE_GAP:
+		return
+	feast_last = feast_t
+	feast_bites += 1
+	var pl: Dictionary = feast_piles_list[feast_idx]
+	pl.left -= 1
+	burst(pl.pos + Vector3(0, 0.8, 0), M.CARROT_C, 12)
+	rabbit.scale = LAND_SQUASH
+	var cheek := 1.0 + minf(feast_bites * 0.02, 0.25)  # yanaklar şişer
+	body(rabbit).scale = Vector3(cheek, 1.0, cheek)
+	pop("Ham!", M.CARROT_C)
+	crunch()
+	vibrate(20)
+	var tw: Tween = pl.node.create_tween()
+	tw.tween_property(pl.node, "scale", Vector3.ONE * maxf(float(pl.left) / FEAST_BITES, 0.01), 0.12)
+	if pl.left <= 0:
+		tw.tween_callback(pl.node.set_visible.bind(false))
+		feast_idx += 1
+		if feast_idx >= feast_piles_list.size():
+			end_eating()
+		else:
+			set_feast_goal()
+
+
+func end_eating() -> void:
+	if feast_done_t < 0.0:
+		feast_done_t = 0.0
+		pop("Mmm!", HUD_WARN)
+
+
+# Şölen biter (süre, tüm yığınlar ya da Geç/Esc): panele geç.
+func feast_finish() -> void:
+	if state != "feast":
+		return
+	skip_btn.visible = false
+	feast_fade.visible = false
+	body(rabbit).rotation.z = 0.0
+	show_end(true)
+
+
+# Kodla üretilen kıtır sesi (dosya yok): gürültüden iki kısa AudioStreamWAV. AudioStreamGenerator denendi, çıkışta motor sızıntı
+# uyarısı veriyor (kapı bunu hata sayar) ve webde WAV daha hafif. Oynatıcı ya da ses sürücüsü yoksa sessiz geçer.
+func make_sfx() -> void:
+	if sfx or DisplayServer.get_name() == "headless":  # ekransızda ses sürücüsü sahte: oynatılan her ses çıkışta sızıntı uyarısı verir
+		return
+	sfx = AudioStreamPlayer.new()
+	sfx.volume_db = -6.0
+	add_child(sfx)
+	var n := int(0.12 * SFX_RATE)
+	for v in 2:  # iki çeşit, art arda aynı ses sıkmasın
+		var data := PackedByteArray()
+		data.resize(n * 2)
+		var lp := 0.0
+		for i in n:
+			var t := float(i) / SFX_RATE
+			lp = lerpf(lp, randf() * 2.0 - 1.0, 0.55)  # hafif alçak geçiren gürültü
+			data.encode_s16(i * 2, int(lp * exp(-fmod(t, 0.045) * (70.0 + v * 30.0)) * (1.0 - t / 0.12) * 0.7 * 32767.0))
+		var wav := AudioStreamWAV.new()
+		wav.format = AudioStreamWAV.FORMAT_16_BITS
+		wav.mix_rate = int(SFX_RATE)
+		wav.data = data
+		sfx_buf.append(wav)
+
+
+func crunch() -> void:
+	if sfx and not sfx_buf.is_empty():
+		sfx.stream = sfx_buf[feast_bites % 2]
+		sfx.play()
