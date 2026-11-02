@@ -147,6 +147,8 @@ static func act(st: Dictionary, id: String, cat: Dictionary) -> Dictionary:
 
 var st: Dictionary
 var cat: Dictionary
+const PANEL_LEFT := 0.45  # panel ekranın sağ yarısında (Tasarımcı ayarlar)
+const PANEL_GAP := 16.0
 var who := "tavsan"
 var sel := 0
 var rows: VBoxContainer
@@ -157,13 +159,15 @@ var tab_btns := {}
 func setup(state: Dictionary, catalog: Dictionary, th: Theme) -> void:
 	st = state
 	cat = catalog
-	var c := CenterContainer.new()
-	c.theme = th
-	c.set_anchors_preset(Control.PRESET_FULL_RECT)
-	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(c)
-	var pc := PanelContainer.new()
-	c.add_child(pc)
+	var pc := PanelContainer.new()  # sağ yarıda: önizlenen karakter solda açık kalsın
+	pc.theme = th
+	pc.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	pc.anchor_left = PANEL_LEFT
+	pc.offset_left = PANEL_GAP
+	pc.offset_top = PANEL_GAP
+	pc.offset_right = -PANEL_GAP
+	pc.offset_bottom = -PANEL_GAP
+	add_child(pc)
 	var col := VBoxContainer.new()
 	pc.add_child(col)
 	var top := HBoxContainer.new()
@@ -175,8 +179,13 @@ func setup(state: Dictionary, catalog: Dictionary, th: Theme) -> void:
 	money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	money.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	top.add_child(money)
+	var scroll := ScrollContainer.new()  # telefonda (390 px) 6 satır sığmaz: liste kayar
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
 	rows = VBoxContainer.new()
-	col.add_child(rows)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(rows)
 	var hint := Label.new()
 	hint.text = "↑ ↓ seç · Enter al/giy · Tab karakter · Esc kapat"
 	hint.add_theme_font_size_override("font_size", 16)

@@ -11,8 +11,8 @@ const THROWN := [["kova", M.METAL, Vector3(0.5, 0.5, 0.5), "y"], ["tırmık", M.
 		["yumurta", M.EGG_WHITE, Vector3(0.3, 0.4, 0.3), "s"], ["lahana", M.CABBAGE_LIGHT, Vector3(0.55, 0.5, 0.55), "s"]]  # [ad, renk, boyut, şekil]; etki ada göre
 const Secim := preload("res://secim.gd")
 const Dolap := preload("res://dolap.gd")  # kıyafet dolabı ve havuç cüzdanı
-const MENU_HALIL_CAM := Vector3(1.4, 0.5, -3.2)  # dolapta Halil önizlemesi, Halil'e göre (Tasarımcı ayarlar)
-const MENU_HALIL_LOOK := Vector3(0, 0.3, 0)
+const MENU_HALIL_CAM := Vector3(1.6, 0.7, -4.0)  # dolapta Halil önizlemesi, Halil'e göre (Tasarımcı ayarlar)
+const MENU_HALIL_LOOK := Vector3(-1.6, 0.25, 0)  # Halil solda, dolap paneli sağda (ekransız ölçüm: örtüşme %0, boy %45)
 const Ses := preload("res://ses.gd")  # kodla üretilen sesler
 
 # Menü ve Bölüm 1 (PLAN-karakter-secimi.md, PLAN-bolum1.md)
