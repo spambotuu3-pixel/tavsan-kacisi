@@ -11,7 +11,7 @@ const TOP := 5  # skor tablosunda tutulan kayıt
 const TITLE_C := Color(1.0, 0.86, 0.45)       # başlık: sıcak sarı, koyu kahve kenar (Tasarımcı)
 const TITLE_EDGE := Color(0.33, 0.22, 0.14)
 
-const HELP_TEXT := "Kontroller\n← →  şerit değiştir\n↑ / Space  zıpla\n↓  havuçla atıl (3 havuç)\nTelefon: ekranın solu, ortası, sağı\n(sola, zıpla, sağa)"
+const HELP_TEXT := "Kontroller\n← →  şerit değiştir\n↑ / Space  zıpla\n↓  havuçla atıl (3 havuç)\nTelefon: dokun sol / orta / sağ\n(sola, zıpla, sağa), aşağı kaydır = atıl"
 
 static var ayar_path := "user://ayar.cfg"  # senaryo testleri kendi dosyasını verir, kullanıcının kaydı bozulmaz
 

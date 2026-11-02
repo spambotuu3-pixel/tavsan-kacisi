@@ -15,6 +15,15 @@ const Secim := preload("res://secim.gd")
 const MENU_CAM := Vector3(1.9, 1.0, -3.0)  # menü kamerası, tavşana göre (Tasarımcı ayarlar)
 const MENU_LOOK := Vector3(-1.5, 0.05, 0)  # tavşan ekranın solunda: panel ortada, liste sağda kalsın
 const FARM_CHANCE := 0.3                    # her sırada yol kenarına bina çıkma olasılığı
+# Tarayıcı (OpenGL/Compatibility): HDR yok, ışık aynı değerlerle patlıyor ve renkler solup parlıyor; ışığı kısıp efektleri kapatır.
+const COMPAT_SUN := 0.3
+const COMPAT_AMBIENT := 0.1
+const COMPAT_LIGHT_SCALE := 0.3
+const SWIPE_MIN := 60.0                    # bu kadar px aşağı kaydırma = atıl (telefon)
+const FARM_FREE_Z := 45.0                  # tavşan bu kadar ilerleyince menü çiftliği silinir (m)
+const COMPAT_AHEAD := 60.0                 # tarayıcıda sıra ve dekor bu kadar ileriye kurulur (masaüstü 80)
+const COMPAT_SHADOW_DIST := 28.0
+const COMPAT_SCALE := 0.8                  # tarayıcıda 3B çizim çözünürlük ölçeği (arayüz tam çözünürlükte kalır)
 const MENU_SPIN := 0.6                     # tavşanın menüde dönüşü (rad/sn)
 const INTRO_GO := "KAÇ!"
 const INTRO_CUES := {0.05: "Mmm, taze havuç...", 1.6: "HEY! Havuçlarım!", 3.2: "3", 3.8: "2", 4.4: "1", 5.0: INTRO_GO}
@@ -123,9 +132,15 @@ var meshes := {}
 var fx_mats := {}  # parçacık malzemeleri [renk, alan, hız] anahtarıyla; her patlamada yeniden üretilmesin
 var fx_mesh: SphereMesh
 var mats := {}
+var burst_pools := {}
+var vmeshes := {}  # [şekil, renk] -> köşe rengi pişmiş mesh (model() birleştirmesi için)
+var merged_mat: ShaderMaterial
 
 var rabbit: Node3D
 var halil: Node3D
+var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"  # tarayıcı sürümü
+var farm_nodes: Array[Node3D] = []  # menü çiftliği: koşuda geride kalınca silinir
+var touch_from := {}   # parmak indeksi → dokunma başlangıcı (telefon)
 var scenery: Node3D  # zemin, yol ve tepeler: tavşanla birlikte kayar
 var cam: Camera3D
 var hud: Label
@@ -207,6 +222,19 @@ func shape_mesh(shape: String) -> Mesh:
 				m.inner_radius = 0.4
 				m.outer_radius = 0.5
 			_: m = BoxMesh.new()
+		if compat:  # tarayıcı: varsayılan segmentler yüzlerce bin üçgen ediyor (küre 4224); düşük segment yeter
+			match shape:
+				"s":
+					m.radial_segments = 16
+					m.rings = 8
+				"c":
+					m.radial_segments = 12
+					m.rings = 4
+				"y", "k":
+					m.radial_segments = 12
+				"t":
+					m.rings = 16
+					m.ring_segments = 8
 		meshes[shape] = m
 	return meshes[shape]
 
@@ -218,6 +246,8 @@ func soft_mat(color: Color) -> Material:
 			sm.shader = TOON
 			sm.set_shader_parameter("albedo", color)
 			sm.set_shader_parameter("sway", color in SWAY_COLORS)
+			if compat:
+				sm.set_shader_parameter("light_scale", COMPAT_LIGHT_SCALE)
 			mats[color] = sm
 		else:  # saydam (hedef diski, gölge): standart malzeme
 			var mat := StandardMaterial3D.new()
@@ -248,15 +278,53 @@ func body(n: Node3D) -> Node3D:
 	return n.get_child(0)
 
 
+# Köşe renkli şekil kopyası (renk sRGB, shader doğrusala çevirir).
+func color_mesh(shape: String, color: Color) -> Mesh:
+	var key := [shape, color]
+	if not vmeshes.has(key):
+		var arr := shape_mesh(shape).surface_get_arrays(0)
+		var cols := PackedColorArray()
+		cols.resize(arr[Mesh.ARRAY_VERTEX].size())
+		cols.fill(color)
+		arr[Mesh.ARRAY_COLOR] = cols
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		vmeshes[key] = am
+	return vmeshes[key]
+
+
 # Parça: [boyut, renk, konum, şekil?, dönüş(derece)?]
+# Opak ve sallanmayan parçalar tek mesh'e birleşir (çizim çağrısı); saydam ve rüzgarda sallanan parçalar ayrı kalır.
 func model(parts: Array, pos: Vector3, parent: Node = null) -> Node3D:
 	var root := Node3D.new()
 	root.position = pos
 	(parent if parent else self).add_child(root)
 	var body := Node3D.new()  # sallanma bunu oynatır; kök çarpışma noktası olduğu için yerinde kalır
 	root.add_child(body)
+	var st := SurfaceTool.new()
+	var merged := 0
 	for pt in parts:
-		box(pt[0], pt[1], pt[2], body, pt[3] if pt.size() > 3 else "b", pt[4] if pt.size() > 4 else Vector3.ZERO)
+		var shape: String = pt[3] if pt.size() > 3 else "b"
+		var rot: Vector3 = pt[4] if pt.size() > 4 else Vector3.ZERO
+		var color: Color = pt[1]
+		if color.a < 1.0 or color in SWAY_COLORS:
+			box(pt[0], color, pt[2], body, shape, rot)
+			continue
+		var basis := Basis.from_euler(rot * (PI / 180.0), EULER_ORDER_YXZ) * Basis.from_scale(pt[0] * SHAPE_FIX.get(shape, Vector3.ONE))
+		st.append_from(color_mesh(shape, color), 0, Transform3D(basis, pt[2]))
+		merged += 1
+	if merged > 0:
+		if not merged_mat:
+			merged_mat = ShaderMaterial.new()
+			merged_mat.shader = TOON
+			merged_mat.set_shader_parameter("vcol", true)
+			merged_mat.set_shader_parameter("vcol_srgb", not compat)
+			if compat:
+				merged_mat.set_shader_parameter("light_scale", COMPAT_LIGHT_SCALE)
+		var mi := MeshInstance3D.new()
+		mi.mesh = st.commit()
+		mi.material_override = merged_mat
+		body.add_child(mi)
 	return root
 
 
@@ -274,31 +342,39 @@ func _ready() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.45
+	env.ambient_light_energy = COMPAT_AMBIENT if compat else 0.45
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC  # AgX sahneyi soluk gösterdi
-	env.glow_enabled = true
+	env.glow_enabled = not compat
 	env.glow_intensity = 0.3
 	env.fog_enabled = true
 	env.fog_light_color = horizon
 	env.fog_density = 0.007
 	env.fog_sky_affect = 0.15 # varsayılan 1.0 gökyüzünü tamamen sise boğuyor
-	env.ssao_enabled = true
-	env.adjustment_enabled = true  # FILMIC'in soldurduğu rengi geri getir
+	env.ssao_enabled = not compat
+	env.adjustment_enabled = not compat  # FILMIC'in soldurduğu rengi geri getir
 	env.adjustment_saturation = 1.1
 	env.adjustment_contrast = 1.05
-	get_viewport().msaa_3d = Viewport.MSAA_4X
+	get_viewport().msaa_3d = Viewport.MSAA_2X if compat else Viewport.MSAA_4X
+	if compat:
+		get_viewport().scaling_3d_scale = COMPAT_SCALE
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-25, -40, 0)
 	sun.light_color = Color(1.0, 0.85, 0.68)
-	sun.light_energy = 1.2
+	sun.light_energy = COMPAT_SUN if compat else 1.2
 	sun.light_angular_distance = 2.0
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 40.0  # gölge çözünürlüğü kameranın yakınında toplansın
+	sun.directional_shadow_max_distance = COMPAT_SHADOW_DIST if compat else 40.0  # gölge çözünürlüğü kameranın yakınında toplansın
+	if compat:
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL  # tek bölme: gölge geçişi 4 kez çizilmesin
+		RenderingServer.directional_shadow_atlas_set_size(2048, false)
 	add_child(sun)
 
+	burst_pool(STAR_C, 10, Vector2(1.0, 2.5))  # patlama havuzu önceden hazır (ilk vuruşta düğüm/gölgelendirici üretimi takılmasın)
+	burst_pool(M.DUST_C, 8, Vector2(0.8, 1.6))
+	burst_pool(M.CARROT_C, 12, Vector2(1.0, 2.5))
 	make_world()
 	var choice := Secim.load_choice()
 	make_rabbit(choice.skin)
@@ -336,13 +412,16 @@ func _ready() -> void:
 func make_world() -> void:
 	scenery = model(M.GROUND, Vector3.ZERO)
 	for f in M.FARM_SET:  # menünün arkası ve kenarları çiftlik
-		var fm := model(f[0], f[1])  # scenery'nin çocuğu değil: o tavşanla kayar, evler sabit kalmalı
+		var fm := model(f[0], f[1])
+		farm_nodes.append(fm)  # scenery'nin çocuğu değil: o tavşanla kayar, evler sabit kalmalı
 		fm.rotation_degrees.y = f[2]
 		fm.scale = Vector3.ONE * f[3]
 	clouds = Node3D.new()
 	add_child(clouds)
 	for c in [Vector3(-30, 28, -90), Vector3(18, 34, -130), Vector3(42, 26, -70), Vector3(-12, 38, -170), Vector3(-48, 30, -140)]:
 		model(M.CLOUD, c, clouds)
+	for mi in clouds.find_children("*", "MeshInstance3D", true, false):
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # gökteki bulut gölge atlasını boşuna doldurmasın
 	shadow = model(M.SHADOW_BLOB, Vector3(0, 0.02, 0))
 	model(M.BURROW, Vector3(0, 0, -GOAL - 2))
 	model(M.COOP, Vector3(-6.5, 0, -ZONES[2][0] - 4))  # kümes bölgesinin başında, yol kenarında
@@ -464,7 +543,7 @@ func follow_cam(z: float) -> void:
 
 
 func fill_rows(z: float) -> void:
-	while next_row_z > z - 80 and next_row_z > -GOAL + 10:
+	while next_row_z > z - (COMPAT_AHEAD if compat else 80.0) and next_row_z > -GOAL + 10:
 		spawn_row(next_row_z)
 		next_row_z -= randf_range(9.0, 15.0)
 
@@ -472,10 +551,13 @@ func fill_rows(z: float) -> void:
 # Açılışta herhangi bir tuş ya da tıklama açılışı atlar. Bitişte Enter tekrar koşturur, Esc menüye döner
 # (Space yok; Enter da zıplattığı için bitişte END_LOCK kadar kilit var, bkz. finish()).
 func _unhandled_input(e: InputEvent) -> void:
-	if not e.is_pressed() or e.is_echo():
+	if state == "run" and e is InputEventScreenTouch:  # telefon: bırakınca karar verilir (dokunuş mu, aşağı kaydırma mı)
+		if e.pressed:
+			touch_from[e.index] = e.position
+		else:
+			touch_control(e.position.x, e.position - touch_from.get(e.index, e.position))
 		return
-	if state == "run" and e is InputEventScreenTouch:
-		touch_control(e.position.x)  # telefon: görünmez sol / orta / sağ bölgeler
+	if not e.is_pressed() or e.is_echo():
 		return
 	if state == "intro" and (e is InputEventKey or e is InputEventScreenTouch or e is InputEventJoypadButton or (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT)):
 		if intro_t < INTRO_CUES.find_key(INTRO_GO):
@@ -489,12 +571,23 @@ func _unhandled_input(e: InputEvent) -> void:
 			get_tree().reload_current_scene()
 
 
-# Telefon: ekranın sol üçte biri sola, sağ üçte biri sağa geçer, ortası zıplatır (görünmez bölgeler).
-func touch_control(x: float) -> void:
+# Telefon: aşağı kaydırma havuçla atıldırır; dokunuşta ekranın sol üçte biri sola, sağ üçte biri sağa geçer, ortası zıplatır
+# (görünmez bölgeler). swipe = parmağın dokunma ile bırakma arasındaki yer değiştirmesi (px).
+func touch_control(x: float, swipe := Vector2.ZERO) -> void:
+	if swipe.y > SWIPE_MIN and swipe.y > absf(swipe.x):
+		try_dash()
+		return
 	match int(3.0 * x / get_viewport().get_visible_rect().size.x):
 		0: set_lane(maxi(lane - 1, 0))
 		1: jump_t = JUMP_BUFFER
 		_: set_lane(mini(lane + 1, LANES.size() - 1))
+
+
+func try_dash() -> void:
+	if can_dash(carrots, dash_t):
+		carrots -= DASH_COST
+		dash_t = DASH_TIME
+		say("Atıl!")
 
 
 func pop(text: String, color: Color) -> void:
@@ -552,12 +645,25 @@ func particles(color: Color, amount: int, life: float, area: Vector3, vel: Vecto
 	return g
 
 
+# Patlama parçacıkları havuzdan: [renk, miktar, hız] başına 2 hazır düğüm sırayla yeniden başlatılır (düğüm üretimi/silme yok).
+func burst_pool(color: Color, amount: int, vel: Vector2) -> Array:
+	var key := [color, amount, vel]
+	if not burst_pools.has(key):
+		var list := []
+		for i in 2:
+			var g := particles(color, amount, 0.6, Vector3(0.15, 0.05, 0.15), vel, true)
+			add_child(g)
+			list.append(g)
+		burst_pools[key] = list
+	return burst_pools[key]
+
+
 func burst(pos: Vector3, color: Color, amount: int, vel := Vector2(1.0, 2.5)) -> void:
-	var g := particles(color, amount, 0.6, Vector3(0.15, 0.05, 0.15), vel, true)
+	var list := burst_pool(color, amount, vel)
+	var g: GPUParticles3D = list.pop_front()
+	list.append(g)
 	g.position = pos
-	add_child(g)
-	g.emitting = true
-	g.finished.connect(g.queue_free)
+	g.restart()
 
 
 func rounded(color: Color, radius: int) -> StyleBoxFlat:
@@ -715,10 +821,8 @@ func _process(delta: float) -> void:
 		vy = JUMP_VY
 		rabbit.scale = JUMP_STRETCH
 	jump_t -= delta
-	if Input.is_action_just_pressed("ui_down") and can_dash(carrots, dash_t):
-		carrots -= DASH_COST
-		dash_t = DASH_TIME
-		say("Atıl!")
+	if Input.is_action_just_pressed("ui_down"):
+		try_dash()
 	dash_t -= delta
 	var dashing := dash_t > 0.0
 	var spd := speed + (DASH_SPEED if dashing else 0.0)  # atılım hızı kalıcı speed'e eklenmez
@@ -747,6 +851,10 @@ func _process(delta: float) -> void:
 	blind_t -= delta
 	bucket.visible = blind_t > 0.0
 	blind_rect.visible = bucket.visible
+	if not farm_nodes.is_empty() and p.z < -FARM_FREE_Z:  # menü çiftliği geride kaldı
+		for n in farm_nodes:
+			n.queue_free()
+		farm_nodes.clear()
 	scenery.position.z = p.z
 	clouds.position.z = p.z * CLOUD_PARALLAX
 	shadow.position = Vector3(p.x, 0.02, p.z)

@@ -60,7 +60,7 @@ const RABBIT_SKINS := [
 	{ad = "Pamuk", fur = FUR, ear = EAR_PINK, tail = TAIL},
 	{ad = "Fındık", fur = Color(0.66, 0.47, 0.3), ear = Color(0.93, 0.62, 0.6), tail = Color(0.96, 0.89, 0.78)},
 	{ad = "Duman", fur = Color(0.6, 0.61, 0.66), ear = Color(0.9, 0.6, 0.67), tail = Color(0.93, 0.93, 0.95)},
-	{ad = "Kömür", fur = Color(0.0, 0.0, 0.01), ear = Color(0.62, 0.3, 0.4), tail = Color(0.9, 0.9, 0.92)},  # simsiyah; kulak içi ve kuyruk açık kalır, silüet okunsun
+	{ad = "Beyza", fur = Color(0.0, 0.0, 0.01), ear = Color(0.62, 0.3, 0.4), tail = Color(0.9, 0.9, 0.92)},  # simsiyah; kulak içi ve kuyruk açık kalır, silüet okunsun
 ]
 
 # Halil: kök yerden 1.0 yukarıda. Kapsül gövde, büyük kafa, geniş hasır şapka.
