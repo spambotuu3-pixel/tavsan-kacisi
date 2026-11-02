@@ -6,6 +6,9 @@ extends SceneTree
 const Secim := preload("res://secim.gd")
 const Main := preload("res://main.gd")
 const Ses := preload("res://ses.gd")
+const Dolap := preload("res://dolap.gd")
+const M := preload("res://modeller.gd")
+const DOLAP_MENU := ["dolap_al", "dolap_yetersiz", "bozuk_dolap_cfg"]  # menüde kalır, koşu başlatmaz
 const END_FRAME := 690
 const SOFRA_END_FRAME := 1000  # kazan_sofra: giriş + en çok 10 sn şölen kendiliğinden bitmeli
 const NAMES := {isim_bos = "", isim_uzun = "Çok-uzun-bir-isim-123", isim_turkce = "Şeker Ğığİ"}
@@ -33,8 +36,22 @@ func _initialize() -> void:
 	match ad:  # senaryo kendi koşulunu kurar, dışarıdaki betiğe güvenmez
 		"bozuk_cfg": write_cfg("[secim\nskin = = ][[[ çöp")
 		"skor_bos", "ayar_paneli": write_cfg("")  # ayar_paneli ayarları değiştirir: temiz başlar, sonunda temizler
+		"dolap_al": write_cfg("[cuzdan]\nhavuc=100\n")
+		"dolap_yetersiz": write_cfg("[cuzdan]\nhavuc=0\n")
+		"bozuk_dolap_cfg": write_cfg('[cuzdan]\nhavuc="çok"\n[dolap]\nalinan=[1, "yok", "t_tac", "t_tac"]\ngiyili_tavsan={"bas": "h_kovboy", "yuz": 3}\ngiyili_halil=5\n')
+		"kiyafetle_kos": wear_all()
 		"skor_dolu": write_cfg('[skor]\nliste=[%s]\n' % ", ".join(range(5).map(func(i): return '{"isim": "K%d", "puan": %d}' % [i, 900 - i * 10])))
 	change_scene_to_file("res://main.tscn")
+
+
+# Her karakterin her yuvasına bir kıyafet giydirilmiş kayıt (tüm kıyafetler alınmış).
+func wear_all() -> void:
+	write_cfg("")
+	var st := Dolap.empty_state(0)
+	for id in M.OUTFITS:
+		st.alinan.append(String(id))
+		st = Dolap.equip(st, id, M.OUTFITS)
+	Dolap.save_state(st)
 
 
 func write_cfg(text: String) -> void:
@@ -53,7 +70,9 @@ func _process(_d: float) -> bool:
 	var m = current_scene
 	if m == null:
 		return false
-	if ad != "menu" and f == 30:  # menüden başla (isim senaryolarında önce ismi yaz)
+	if ad in DOLAP_MENU:
+		dolap_test(m)
+	elif ad != "menu" and f == 30:  # menüden başla (isim senaryolarında önce ismi yaz)
 		var menu = m.get_children().filter(func(c): return c is Secim)
 		if menu.is_empty():
 			return fail("menü açılmadı")
@@ -76,7 +95,7 @@ func _process(_d: float) -> bool:
 		ayar_test(m)
 	if f == 32:
 		key(KEY_ENTER, false)
-	if f == 60 and ad != "menu":
+	if f == 60 and ad != "menu" and not ad in DOLAP_MENU:
 		key(KEY_SPACE, true)  # açılışı atla
 	if f == 62:
 		key(KEY_SPACE, false)
@@ -294,8 +313,56 @@ func key(k: Key, down: bool) -> void:
 	Input.parse_input_event(e)
 
 
+# Menüde dolabı aç, sırayla: Enter (en ucuz tavşan kıyafeti), Tab (Halil), Enter, Esc. Tuşlar gerçek girdi yolundan.
+func dolap_test(m) -> void:
+	match f:
+		30: m.open_dolap()
+		40: key(KEY_ENTER, true)
+		50: key(KEY_TAB, true)
+		60: key(KEY_ENTER, true)
+		70: key(KEY_ESCAPE, true)
+	if f in [42, 52, 62, 72]:
+		for k in [KEY_ENTER, KEY_TAB, KEY_ESCAPE]:
+			key(k, false)
+
+
+func dolap_check(m) -> String:
+	var st: Dictionary = Dolap.load_state(M.OUTFITS)
+	if m.dolap_st != st:
+		return "oyundaki dolap durumu kayıtla aynı değil"
+	if not m.menu_node.visible or m.get_children().any(func(c): return c is Dolap):
+		return "Esc dolabı kapatıp menüye dönmedi"
+	match ad:
+		"dolap_al":  # 100 → en ucuz tavşan + en ucuz Halil kıyafeti alınıp giyildi
+			var t := String(ids_by_price("tavsan")[0])
+			var h := String(ids_by_price("halil")[0])
+			if st.alinan != [t, h] or st.havuc != 100 - M.OUTFITS[t].fiyat - M.OUTFITS[h].fiyat or Dolap.worn(st, "tavsan") != [t] or Dolap.worn(st, "halil") != [h]:
+				return "alım/giyim yanlış: %s" % st
+		"dolap_yetersiz":
+			if st.havuc != 0 or not st.alinan.is_empty():
+				return "para yokken alım oldu: %s" % st
+		"bozuk_dolap_cfg":
+			if st.havuc != Dolap.START_GIFT or st.alinan != ["t_tac"] or not Dolap.worn(st, "tavsan").is_empty() or not Dolap.worn(st, "halil").is_empty():
+				return "bozuk kayıt temizlenmedi: %s" % st
+	return ""
+
+
+func ids_by_price(who: String) -> Array:
+	var out := M.OUTFITS.keys().filter(func(id): return M.OUTFITS[id].kime == who)
+	out.sort_custom(func(a, b): return M.OUTFITS[a].fiyat < M.OUTFITS[b].fiyat)
+	return out
+
+
 func check(m) -> bool:
-	var want := {menu = "menu", duraklat = "run", ayar_paneli = "run", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
+	if ad in DOLAP_MENU:
+		var why := dolap_check(m)
+		if why != "":
+			return fail(why)
+	if ad == "kiyafetle_kos" and (Dolap.worn(m.dolap_st, "tavsan").size() < 2 or Dolap.worn(m.dolap_st, "halil").size() < 2):
+		return fail("kıyafetler giyili değil")
+	if ad in DOLAP_MENU or ad == "kiyafetle_kos":
+		write_cfg("")  # sonraki senaryolar kıyafetsiz başlasın (ör. animasyon şapka eklemine bakıyor)
+	var want := {dolap_al = "menu", dolap_yetersiz = "menu", bozuk_dolap_cfg = "menu", kiyafetle_kos = "run", menu = "menu", duraklat = "run", ayar_paneli = "run", kazan_sofra = "win", dokunma = "run", menu_enter = "run", ses = "run", kazan = "win", yakalan = "over", tekrar_enter = "run", esc_menu = "menu",
 			animasyon = "run", carpma_ses = "run", isim_bos = "run", isim_uzun = "run", isim_turkce = "run", bolgeler = "run", fare_bos = "run", bozuk_cfg = "over", skor_bos = "over", skor_dolu = "over"}
 	if not want.has(ad):
 		return fail("bilinmeyen senaryo")

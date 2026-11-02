@@ -10,6 +10,9 @@ const M := preload("res://modeller.gd")  # model verisi (Tasarımcı)
 const THROWN := [["kova", M.METAL, Vector3(0.5, 0.5, 0.5), "y"], ["tırmık", M.WOOD, Vector3(0.12, 0.12, 1.3), "b"],
 		["yumurta", M.EGG_WHITE, Vector3(0.3, 0.4, 0.3), "s"], ["lahana", M.CABBAGE_LIGHT, Vector3(0.55, 0.5, 0.55), "s"]]  # [ad, renk, boyut, şekil]; etki ada göre
 const Secim := preload("res://secim.gd")
+const Dolap := preload("res://dolap.gd")  # kıyafet dolabı ve havuç cüzdanı
+const MENU_HALIL_CAM := Vector3(1.4, 0.5, -3.2)  # dolapta Halil önizlemesi, Halil'e göre (Tasarımcı ayarlar)
+const MENU_HALIL_LOOK := Vector3(0, 0.3, 0)
 const Ses := preload("res://ses.gd")  # kodla üretilen sesler
 
 # Menü ve Bölüm 1 (PLAN-karakter-secimi.md, PLAN-bolum1.md)
@@ -239,6 +242,10 @@ var gap_label: Label
 var msg_label: Label
 var end_box: CenterContainer
 var end_label: Label
+var end_menu_btn: Button
+var dolap_btn: Button
+var dolap_st: Dictionary  # cüzdan + alınan/giyili kıyafetler (Dolap.load_state)
+var menu_node: CanvasLayer
 
 # Arayüz renkleri (Tasarımcı ayarlar)
 const HUD_BG := Color(1.0, 0.97, 0.9, 0.82)
@@ -443,9 +450,9 @@ func apply_pose(n: Node3D, kind: String, t: float, ph: float, a := 0.0) -> void:
 	for g in pose:
 		if g == "body":
 			body(n).rotation = pose[g]
-		else:
+		elif joints.has(g):  # kıyafet bir grubun bütün parçalarını gizlemiş olabilir (ör. hasır şapka)
 			joints[g].rotation = pose[g]
-	if kind == "halil":
+	if kind == "halil" and joints.has("hat"):  # kıyafet şapkayı gizleyip eklem bırakmamış olabilir
 		joints.hat.position.y = M.RIG_HALIL.hat[0].y + absf(sin(t * 10.0 + ph)) * 0.04  # şapka hafif zıplar
 
 
@@ -593,10 +600,10 @@ func _ready() -> void:
 	burst_pool(M.CARROT_C, 12, Vector2(1.0, 2.5))
 	make_world()
 	var choice := Secim.load_choice()
+	dolap_st = Dolap.load_state(M.OUTFITS)
 	make_rabbit(choice.skin)
 	rabbit_name = Secim.clean_name(choice.isim, M.RABBIT_SKINS[choice.skin].ad)
-	halil = model(M.HALIL, Vector3(0, 1, 7), null, M.RIG_HALIL)
-	model(M.SHADOW_BLOB, Vector3(0, -0.98, 0), halil).scale = Vector3.ONE * 1.3
+	make_halil()
 	cam = Camera3D.new()
 	var cam_fx := CameraAttributesPractical.new()  # minyatür oyuncak dünya: uzak tepeler hafif bulanık
 	cam_fx.dof_blur_far_enabled = true
@@ -618,6 +625,7 @@ func _ready() -> void:
 		cam.position = rabbit.position + MENU_CAM
 		cam.look_at(rabbit.position + MENU_LOOK)
 		var menu := Secim.new()
+		menu_node = menu
 		add_child(menu)
 		var t := ui_theme()
 		for c in menu.get_children():
@@ -690,8 +698,13 @@ func make_hud() -> void:
 	var end_panel := PanelContainer.new()
 	end_panel.add_theme_stylebox_override("panel", rounded(HUD_BG, 24))
 	end_box.add_child(end_panel)
-	end_label = hud_label(end_panel, 28)  # tablo da sığsın
+	var end_col := VBoxContainer.new()
+	end_panel.add_child(end_col)
+	end_label = hud_label(end_col, 28)  # tablo da sığsın
 	end_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	end_menu_btn = ui_button("Menü", Vector2(200, 60), to_menu, 28)  # telefonda Esc yok
+	end_menu_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	end_col.add_child(end_menu_btn)
 	blind_rect = Panel.new()  # kova karartması: ekranın üst yarısı, alt kenarı kova ağzı gibi yay
 	var bsb := rounded(BLIND_COLOR, 0)
 	bsb.corner_radius_bottom_left = 600
@@ -883,6 +896,9 @@ func make_pause_ui(layer: CanvasLayer) -> void:
 	set_btn = ui_button("Ayarlar", SND_BTN, open_settings)
 	set_btn.visible = false
 	layer.add_child(set_btn)
+	dolap_btn = ui_button("Dolap", SND_BTN, open_dolap)
+	dolap_btn.visible = false
+	layer.add_child(dolap_btn)
 	pause_box = Control.new()
 	pause_box.theme = ui_theme()
 	pause_box.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -903,6 +919,7 @@ func make_pause_ui(layer: CanvasLayer) -> void:
 	prow.alignment = BoxContainer.ALIGNMENT_CENTER
 	prow.add_child(ui_button("Devam", Vector2(180, 60), resume_game, 28))
 	prow.add_child(ui_button("Ayarlar", Vector2(180, 60), open_settings, 28))
+	prow.add_child(ui_button("Menü", Vector2(180, 60), to_menu, 28))
 	pcol.add_child(prow)
 	set_panel = centered(pause_box)
 	set_panel.visible = false
@@ -958,7 +975,8 @@ func make_rabbit(s: int) -> void:
 		turn = rabbit.rotation.y
 		rabbit.free()
 	skin = s
-	rabbit = model(Secim.skin_parts(M.RABBIT, M.RABBIT_SKINS[s]), Vector3(0, 0.3, 0), null, M.RIG_RABBIT)
+	var dressed := Dolap.dress(Secim.skin_parts(M.RABBIT, M.RABBIT_SKINS[s]), M.RIG_RABBIT, Dolap.worn(dolap_st, "tavsan"), M.OUTFITS)
+	rabbit = model(dressed[0], Vector3(0, 0.3, 0), null, dressed[1])
 	rabbit.rotation.y = turn
 	bucket = model(M.BUCKET_HAT, Vector3.ZERO, body(rabbit))  # body altında: sallanmayla oynar
 	bucket.visible = false
@@ -967,12 +985,59 @@ func make_rabbit(s: int) -> void:
 	rabbit.add_child(run_dust)
 
 
+# Halil'i giyili kıyafetleriyle kurar; dolapta değişince eskisinin yerine geçer (yeri ve dönüşü korunur).
+func make_halil() -> void:
+	var at := Vector3(0, 1, 7)
+	if halil:
+		at = halil.position
+		halil.free()
+	var dressed := Dolap.dress(M.HALIL, M.RIG_HALIL, Dolap.worn(dolap_st, "halil"), M.OUTFITS)
+	halil = model(dressed[0], at, null, dressed[1])
+	model(M.SHADOW_BLOB, Vector3(0, -0.98, 0), halil).scale = Vector3.ONE * 1.3
+
+
+func open_dolap() -> void:
+	play("click")
+	menu_node.visible = false
+	menu_node.set_process_input(false)  # menünün Enter/↑↓ kısayolları dolapta çalışmasın
+	dolap_btn.visible = false
+	var d := Dolap.new()
+	add_child(d)
+	d.setup(dolap_st, M.OUTFITS, ui_theme())
+	d.changed.connect(func(who):
+		dolap_st = d.st
+		if who == "tavsan":
+			make_rabbit(skin)
+		else:
+			make_halil()
+		menu_cam(who))
+	d.closed.connect(func():
+		dolap_st = d.st
+		menu_node.visible = true
+		menu_node.set_process_input(true)
+		menu_node.name_box.grab_focus()  # gizlenince kaybolan odak geri gelsin, isim yazılabilsin
+		dolap_btn.visible = true
+		menu_cam("tavsan"))
+
+
+func menu_cam(who: String) -> void:
+	var target := halil if who == "halil" else rabbit
+	cam.position = target.position + (MENU_HALIL_CAM if who == "halil" else MENU_CAM)
+	cam.look_at(target.position + (MENU_HALIL_LOOK if who == "halil" else MENU_LOOK))
+
+
+func to_menu() -> void:
+	go_menu = true
+	get_tree().reload_current_scene()
+
+
 func on_start(isim: String) -> void:
 	rabbit_name = isim
 	rabbit.position.x = INTRO_X
 	rabbit.rotation.y = INTRO_FACE
 	hud_panel.visible = true
 	place_snd(false)
+	dolap_btn.visible = false
 	follow_cam(0.0)
 	close_panels()
 	state = "intro"
@@ -1031,7 +1096,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			pop(INTRO_GO, HUD_WARN)  # atlanınca da görünsün (henüz çıkmadıysa)
 		intro_t = INTRO_TIME
 	elif state == "over" or state == "win":
-		var again: bool = (e is InputEventKey and e.keycode in [KEY_ENTER, KEY_KP_ENTER]) or (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A) or e is InputEventScreenTouch
+		var again: bool = (e is InputEventKey and e.keycode in [KEY_ENTER, KEY_KP_ENTER]) or (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A) \
+				or (e is InputEventScreenTouch and not end_menu_btn.get_global_rect().has_point(e.position))  # Menü düğmesine dokunuş tekrar koşturmasın
 		var menu: bool = (e is InputEventKey and e.keycode == KEY_ESCAPE) or (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_B)
 		if again or menu:
 			go_menu = menu
@@ -1544,8 +1610,10 @@ func finish(won: bool, dist: float) -> void:
 	var entry := {isim = rabbit_name, puan = pts}
 	var table := Secim.insert_score(Secim.load_scores(), entry)
 	Secim.save("skor", {liste = table})  # şölen yarıda kapansa da puan kaybolmaz
+	dolap_st.havuc = Dolap.bank_run(carrots_total, won)  # kumbara hemen kaydedilir
 	var title := ("%s yuvada şölen yaptı!\nHalil eli boş döndü." % rabbit_name) if won else ("Halil yakaladı: %s" % rabbit_name)
-	end_text = "%s\nPuan: %d\n\nEn iyiler\n%s\n\nEnter / dokun: tekrar koş    Esc: menü" % [title, pts, Secim.score_lines(table, table.find_custom(func(e): return is_same(e, entry)))]  # aynı puanlı eski kayıt değil, bu kayıt
+	end_text = "%s\nPuan: %d    Kumbara: +%d (%d havuç)\n\nEn iyiler\n%s\n\nEnter / dokun: tekrar koş    Esc: menü" % [title, pts,
+			Dolap.earned(carrots_total, won), dolap_st.havuc, Secim.score_lines(table, table.find_custom(func(e): return is_same(e, entry)))]  # aynı puanlı eski kayıt değil, bu kayıt
 	if won:
 		begin_feast()
 	else:
@@ -1799,6 +1867,9 @@ func snd_label() -> void:
 func place_snd(menu: bool) -> void:
 	snd_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT if menu else Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
 	set_btn.visible = menu  # menüde sol üst köşe (orada başka şey yok)
+	dolap_btn.visible = menu
+	dolap_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 16)
+	dolap_btn.grow_horizontal = Control.GROW_DIRECTION_END
 	set_btn.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	set_btn.grow_horizontal = Control.GROW_DIRECTION_END
 	set_btn.grow_vertical = Control.GROW_DIRECTION_END

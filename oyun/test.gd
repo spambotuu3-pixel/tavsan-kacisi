@@ -60,10 +60,13 @@ func _init() -> void:
 		[Dolap.clean_dolap(-5, ["sapka", "yok", 3, "sapka"], {tavsan = {kafa = "kovboy", boyun = "fular"}, halil = "x"}, CAT),
 				{havuc = 0, alinan = ["sapka"], giyili = {tavsan = {}, halil = {}}}, "bozuk dolap kaydı temizlenir"],
 		[Dolap.clean_dolap("x", null, {}, CAT).havuc, Dolap.START_GIFT, "kayıt yoksa ilk hediye"],
+		[Dolap.clean_dolap(5, [&"sapka"], {tavsan = {&"kafa": &"sapka"}}, CAT), {havuc = 5, alinan = ["sapka"], giyili = {tavsan = {kafa = "sapka"}, halil = {}}}, "StringName kimlikli kayıt da okunur"],
 		[Mod.OUTFITS.keys().filter(func(id): var o: Dictionary = Mod.OUTFITS[id]; return not (o.get("kime") in Dolap.WHO and o.get("fiyat") is int and o.fiyat > 0 and o.get("yuva") is String and o.get("parts") is Array)), [],
 				"kıyafet verisi dolap sözleşmesine uyuyor (kime, fiyat > 0, yuva, parts)"],
 		[Mod.OUTFITS.keys().all(func(id): return Dolap.equip(Dolap.buy(Dolap.empty_state(1000), id, Mod.OUTFITS), id, Mod.OUTFITS).giyili[Mod.OUTFITS[id].kime].get(Mod.OUTFITS[id].yuva) == id), true,
 				"her gerçek kıyafet alınıp giyilebiliyor"],
+		[dress_ok(), true, "kıyafet: gizlenen parça çıkar, eklem indeksleri kayar, kafa kıyafeti eklemle oynar"],
+		[dolap_act(), ["Al (25)", "Çıkar", "Giy", "Yetmiyor (60)", 75], "dolap düğmesi: al+giy, çıkar, yeniden giy; para yetmiyor"],
 		[dolap_kayit(), true, "dolap kaydı gidip gelir, koşu kazancı cüzdana eklenir (test dosyası)"],
 		[Main.HIT_SND.keys().map(func(k): return Main.hit_snd(k)), Main.HIT_SND.values(), "engel türü ses anahtarına eşlenir"],
 		[[Main.hit_snd(""), Main.hit_snd("bilinmez")], ["bonk", "bonk"], "bilinmeyen engel türü eski çarpma sesini çalar"],
@@ -87,6 +90,26 @@ func dolap_slot() -> Array:
 	var halil := Dolap.equip(Dolap.buy(st, "kovboy", CAT), "kovboy", CAT)
 	var off := Dolap.unequip(halil, "tac", CAT)
 	return [halil.giyili.tavsan.kafa, halil.giyili.halil.kafa, off.giyili.tavsan.get("kafa", "") + Dolap.equip(off, "fular", CAT).giyili.tavsan.get("boyun", "")]
+
+
+func dress_ok() -> bool:
+	var red := Color.RED
+	var parts := [[Vector3.ONE, Color.BLUE, Vector3.ZERO], [Vector3.ONE, red, Vector3.ZERO], [Vector3.ONE, Color.GREEN, Vector3.ZERO]]
+	var rig := {hat = [Vector3.UP, [1]], leg = [Vector3.ZERO, [2]]}
+	var cat := {s = {kime = "halil", yuva = "bas", fiyat = 1, gizle = [red], eklem = "hat", parts = [[Vector3.ONE, Color.WHITE, Vector3.ZERO]]}}
+	var d := Dolap.dress(parts, rig, ["s"], cat)
+	var bare := Dolap.dress(parts, rig, [], cat)
+	return d[0].size() == 3 and d[0][2][1] == Color.WHITE and d[1].leg[1] == [1] and d[1].hat[1] == [2] \
+			and bare[0] == parts and bare[1] == rig and rig.hat[1] == [1] and parts.size() == 3  # kaynak bozulmadı
+
+
+func dolap_act() -> Array:
+	var st := Dolap.empty_state(100)
+	var a := Dolap.label_for(st, "sapka", CAT)
+	st = Dolap.act(st, "sapka", CAT)
+	var b := Dolap.label_for(st, "sapka", CAT)
+	var off := Dolap.act(st, "sapka", CAT)
+	return [a, b, Dolap.label_for(off, "sapka", CAT), Dolap.label_for(Dolap.empty_state(10), "fular", CAT), off.havuc]
 
 
 func dolap_kayit() -> bool:  # kullanıcının ayar.cfg'si değil, geçici dosya

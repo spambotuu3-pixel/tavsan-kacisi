@@ -1,0 +1,20 @@
+[skor]
+
+liste=[{
+&"isim": "Pamuk",
+&"puan": 800
+}, {
+&"isim": "Pamuk",
+&"puan": 800
+}, {
+&"isim": "Pamuk",
+&"puan": 179
+}, {
+&"isim": "Pamuk",
+&"puan": 35
+}]
+
+[secim]
+
+skin=0
+isim=""
